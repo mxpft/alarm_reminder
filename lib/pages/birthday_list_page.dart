@@ -121,14 +121,32 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
     );
     if (entry == null) return;
 
+    // 修改时：先删除旧的日历事件，再把 calendarEventId 清空，让 rescheduleAll 创建新的
+    if (existing != null) {
+      await widget.notification.cancelForEntry(existing);
+      entry.calendarEventId = null; // 清空，触发 rescheduleAll 创建新事件
+    }
+
     await widget.repo.save(entry);
     // 新增 / 修改后：立刻重新调度通知。
     await widget.notification.rescheduleAll(widget.repo, DateTime.now());
 
+    // 检查日历事件是否创建成功
+    final updated = widget.repo.box.get(entry.id);
+    final calendarOk = updated?.calendarEventId != null;
+
     // 操作成功提示
     if (mounted) {
+      final baseText = existing == null ? '新增成功' : '修改成功';
+      final String fullText;
+      if (calendarOk) {
+        fullText = baseText;
+      } else {
+        final err = widget.notification.calendarLastError ?? '日历权限未开启';
+        fullText = '$baseText（日历同步失败：$err）';
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(existing == null ? '新增成功' : '修改成功')),
+        SnackBar(content: Text(fullText)),
       );
     }
   }

@@ -63,6 +63,9 @@ class BirthdayEntry {
   /// 头像本地文件路径（未上传为 null）。
   String? avatarPath;
 
+  /// 系统日历事件ID（写入日历时生成，用来删除/更新）。
+  String? calendarEventId;
+
   BirthdayEntry({
     required this.id,
     required this.name,
@@ -76,6 +79,7 @@ class BirthdayEntry {
     this.remindMinute = 0,
     this.notify3DaysBefore = true,
     this.avatarPath,
+    this.calendarEventId,
   });
 
   /// 只读展示用的农历月名（农历 1=正月 … 12=腊月）。

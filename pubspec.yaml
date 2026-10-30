@@ -35,6 +35,8 @@ dependencies:
   flutter_local_notifications: ^17.2.4
   # 精确闹钟调度（替代 zonedSchedule，避开序列化bug）
   android_alarm_manager_plus: ^4.0.1
+  # 系统日历读写（杀后台也能提醒）
+  device_calendar_plus: ^0.12.0
   # 通知定时所需的时区支持（zonedSchedule 依赖它）
   timezone: ^0.9.4
   # 本地数据库（无后端、不上云）
@@ -59,6 +61,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -108,3 +111,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# 放在pubspec.yaml最底部，配置图标
+flutter_launcher_icons:
+  android: true
+  ios: false #咱们不用ios，关闭
+  image_path: "assets/little-butler.png" #你的图标文件路径
+  adaptive_icon_background: "#ffffff" #安卓自适应图标背景色，十六进制颜色

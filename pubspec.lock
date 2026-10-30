@@ -49,6 +49,22 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "1.4.1"
+  checked_yaml:
+    dependency: transitive
+    description:
+      name: checked_yaml
+      sha256: "959525d3162f249993882720d52b7e0c833978df229be20702b33d48d91de70f"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "2.0.4"
+  cli_util:
+    dependency: transitive
+    description:
+      name: cli_util
+      sha256: ff6785f7e9e3c38ac98b2fb035701789de90154024a75b6cb926445e83197d1c
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.4.2"
   clock:
     dependency: transitive
     description:
@@ -113,6 +129,38 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.7.15"
+  device_calendar_plus:
+    dependency: "direct main"
+    description:
+      name: device_calendar_plus
+      sha256: b2bc987a168d038bf227495c61480ab8f30e11558daaa2dd0c1ac1273a521aea
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.12.0"
+  device_calendar_plus_android:
+    dependency: transitive
+    description:
+      name: device_calendar_plus_android
+      sha256: "001abeeb624ec9971d47bba58f73e39baefe824329a3d5ebc2f1e3816eba6997"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.11.0"
+  device_calendar_plus_ios:
+    dependency: transitive
+    description:
+      name: device_calendar_plus_ios
+      sha256: ecd843a1d2e88b5e66cafe9e6dbc5871fdae5485f0d6adb8c362d6553b522123
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.11.0"
+  device_calendar_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: device_calendar_plus_platform_interface
+      sha256: "2d40665feb0eef8ecd004de5aea6abfe97ecce3cda5dd60ae9e4cd6969d719f8"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.10.0"
   fake_async:
     dependency: transitive
     description:
@@ -166,6 +214,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_launcher_icons:
+    dependency: "direct dev"
+    description:
+      name: flutter_launcher_icons
+      sha256: "10f13781741a2e3972126fae08393d3c4e01fa4cd7473326b94b72cf594195e7"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "0.14.4"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -336,6 +392,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.19.0"
+  json_annotation:
+    dependency: transitive
+    description:
+      name: json_annotation
+      sha256: "2a743920d81b7910627f68ee2c9ac1fc0bfee32b9fc3403587d7c6791ca12f80"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "4.12.0"
   leak_tracker:
     dependency: transitive
     description:

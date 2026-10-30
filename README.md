@@ -1,3 +1,8 @@
+产品名：LittleButler
+描述：YOUR PERSONAL MEMORY BUTLER
+slogan：Never Miss a Day. Never Lose a Memory.
+中文宣传语：不错过重要的日子，不遗失值得珍藏的记忆。
+
 这是一份需求说明说，请阅读并准备开始工作任务：# 生日提醒App｜MVP需求文档（定稿版）
 > 技术栈：Flutter（一套代码，同时编译安卓APK、iOS包）
 > 存储：Hive本地数据库（无后端、不上云，数据只存在本机）

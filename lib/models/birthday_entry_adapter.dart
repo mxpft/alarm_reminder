@@ -27,13 +27,14 @@ class BirthdayEntryAdapter extends TypeAdapter<BirthdayEntry> {
       remindMinute: fields[9] as int? ?? 0,
       notify3DaysBefore: fields[10] as bool? ?? true,
       avatarPath: fields[11] as String?,
+      calendarEventId: fields[12] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, BirthdayEntry obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(13)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -57,6 +58,8 @@ class BirthdayEntryAdapter extends TypeAdapter<BirthdayEntry> {
       ..writeByte(10)
       ..write(obj.notify3DaysBefore)
       ..writeByte(11)
-      ..write(obj.avatarPath);
+      ..write(obj.avatarPath)
+      ..writeByte(12)
+      ..write(obj.calendarEventId);
   }
 }

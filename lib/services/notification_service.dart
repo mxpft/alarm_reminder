@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../data/birthday_repository.dart';
 import '../models/birthday_entry.dart';
 import 'birthday_calculator.dart';
+import 'calendar_service.dart';
 
 /// 通知调度服务（用 AlarmManager 替代 zonedSchedule，避开序列化bug）。
 class NotificationService {
@@ -11,6 +12,10 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final CalendarService _calendar = CalendarService();
+
+  /// 日历同步的最后错误信息（供 UI 显示）。
+  String? get calendarLastError => _calendar.lastError;
 
   static const String _channelId = 'birthday_channel';
   static const String _channelName = '生日提醒';
@@ -22,7 +27,7 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -104,8 +109,22 @@ class NotificationService {
     await AndroidAlarmManager.cancel(9998);
 
     final today = DateTime(now.year, now.month, now.day);
+    var calendarPermissionDenied = false; // 权限被拒绝后，跳过后续日历创建
+
     for (final entry in repo.getAll()) {
       await _scheduleOne(entry, today);
+      // 同步日历：如果还没有日历事件，且权限没有被拒绝，创建一个
+      if (entry.calendarEventId == null && !calendarPermissionDenied) {
+        final occurrence = BirthdayCalculator.nextOccurrence(entry, today);
+        final eventId = await _calendar.createBirthdayEvent(entry, occurrence.date);
+        if (eventId != null) {
+          entry.calendarEventId = eventId;
+          await repo.save(entry);
+        } else {
+          // 日历创建失败，可能是权限被拒绝，标记一下，后面不再弹
+          calendarPermissionDenied = true;
+        }
+      }
     }
   }
 
@@ -160,10 +179,29 @@ class NotificationService {
     }
   }
 
-  /// 删除单条生日后，取消它已排定的闹钟。
+  /// 删除单条生日后，取消它已排定的闹钟 + 删除日历事件。
   Future<void> cancelForEntry(BirthdayEntry entry) async {
     await AndroidAlarmManager.cancel(_notifyId(entry, 0));
     await AndroidAlarmManager.cancel(_notifyId(entry, 1));
+    // 同步删除日历事件
+    await _calendar.deleteBirthdayEvent(entry.calendarEventId);
+  }
+
+  /// 修改生日后：刷新闹钟 + 刷新日历事件（删旧+建新）。
+  Future<void> refreshAfterEdit(BirthdayEntry entry, DateTime now) async {
+    // 先取消旧闹钟
+    await AndroidAlarmManager.cancel(_notifyId(entry, 0));
+    await AndroidAlarmManager.cancel(_notifyId(entry, 1));
+
+    // 重新调度闹钟
+    final today = DateTime(now.year, now.month, now.day);
+    await _scheduleOne(entry, today);
+
+    // 刷新日历事件：删旧 + 建新
+    final newEventId = await _calendar.refreshBirthdayEvent(entry, today);
+    if (newEventId != null) {
+      entry.calendarEventId = newEventId;
+    }
   }
 
   /// 生成稳定的闹钟 ID。
@@ -178,7 +216,7 @@ class NotificationService {
 Future<void> alarmCallback(int id) async {
   final plugin = FlutterLocalNotificationsPlugin();
 
-  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
   const iosSettings = DarwinInitializationSettings();
   const settings = InitializationSettings(
     android: androidSettings,
