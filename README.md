@@ -1,17 +1,75 @@
-# birthday_reminder
+这是一份需求说明说，请阅读并准备开始工作任务：# 生日提醒App｜MVP需求文档（定稿版）
+> 技术栈：Flutter（一套代码，同时编译安卓APK、iOS包）
+> 存储：Hive本地数据库（无后端、不上云，数据只存在本机）
+> 通知：flutter_local_notifications 系统本地通知
+> 农历转换：lunar_flutter
+> 目标：公历/农历生日提醒，最小可用版本，不额外加功能
+## 一、核心业务规则
+1. 生日录入二选一：公历生日 / 农历生日
+2. 存储规则：**原始日期原样保存**
+   - 公历：存公历年月日
+   - 农历：存农历年月日 + 闰月标记
+   
+   > ❌ 禁止一次性转公历写死；✅ 每次计算时，动态换算「当年对应的公历生日日期」
+3. 生日计算规则
+   - 拿到当年生日对应的公历日期，作为基准提醒日
+   - 如果当年该农历日期不存在（例：腊月三十，部分年份只有腊月29）→ 自动落到该月最后一天
+   - 闰月生日：仅在有对应闰月的年份触发提醒；无闰月的年份当年不触发
+   - 若当年生日已过 → 自动计算下一年的公历日期
+4. 提醒时机（固定2个时间点）
+   - 生日前3天
+   - 生日当天
+5. 列表排序：按「距离下一次生日剩余天数」从小到大排序
+## 二、功能清单
+1. 生日列表页
+    - 展示所有生日条目：姓名、备注、生日类型（公历/农历）、距离生日还有几天
+    - 按剩余天数排序
+    - 支持点击新增、点击条目编辑、删除生日
+2. 新增/编辑弹窗
+    - 输入：姓名（必填）、备注（选填）
+    - 单选：公历 / 农历
+    - 日期选择器：公历日历、农历日历
+    - 保存后自动重算、刷新通知调度
+3. 本地持久化
+    - 所有生日记录本地存储，卸载App才清空
+4. 通知调度逻辑
+    - App每次打开：自动遍历全部生日，重新换算日期、重新调度所有通知（解决农历跨年、手机重启丢失闹钟问题）
+    - 新增 / 修改 / 删除生日：立刻重新调度通知
+5. 权限处理
+    - 启动时申请通知权限
+    - 安卓端：增加提示文案，引导用户关闭电池优化、允许后台活动、授予精确闹钟权限
+6. 通知内容模板
+    - 标题：生日提醒
+    - 内容：【姓名】的生日快到了（提前3天） / 【姓名】今天过生日！
+## 三、平台限制说明（已知边界，用户须知）
+### iOS
+1. 采用系统通知调度，App被划掉（后台清理）、重启手机，已调度通知仍然有效
+2. 系统限制：同时最多64条本地定时通知
+3. 短板：**不会自动跨年度更新农历换算**，如果一整年完全不打开App，第二年农历生日提醒失效；每次打开App自动刷新调度补偿这个问题
+4. 不允许后台常驻轮询，完全依靠系统通知中心
+### 安卓
+1. 原生安卓AOSP：使用系统闹钟AlarmManager，不需要App常驻后台，杀掉进程也能响
+2. 国内定制系统（小米/华为/OPPO/vivo等）：
+   - 用户手动上滑彻底清除App进程 → 系统会清空闹钟，后续提醒失效（厂商电源策略，代码无法突破）
+   - 手机重启后闹钟会丢失，依赖开机自启恢复调度（开机自启也需要用户手动授权）
+3. 需要：精确闹钟权限、通知权限、后台活动权限
+## 四、非需求（MVP不做，后续迭代再加）
+- 不做云端同步、多设备同步
+- 不做自定义提前提醒天数（固定提前3天+当天）
+- 不做分组、标签、图片
+- 不做重复提醒、自定义铃声
+- 不做上架、支付、广告
+## 五、交付约定
+我们接下来按这个需求开发，产出：
+1. pubspec.yaml 依赖配置
+2. 数据模型
+3. 页面、日历选择、农历转换逻辑
+4. 通知调度、权限处理代码
+5. 打包说明（iOS打包需要Mac+Xcode+开发者账号）
+如果你确认这份需求没问题，我们就开始写初始代码。
 
-A new Flutter project.
 
-## Getting Started
 
-This project is a starting point for a Flutter application.
+## 如何启动
+flutter build apk --release
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
