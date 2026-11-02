@@ -146,17 +146,9 @@ class BirthdayCalculator {
         .getYearShengXiao();
   }
 
-  /// 计算周岁：出生后过了几个生日。
+  /// 计算周岁：当前年份 - 出生年份。
   static int ageOf(BirthdayEntry entry, DateTime today) {
-    final birth = _occurrenceForYear(entry, entry.year);
-    if (birth == null) return 0;
-
-    var age = today.year - birth.year;
-    final thisYearBday = _occurrenceForYear(entry, today.year);
-    final todayOnly = DateTime(today.year, today.month, today.day);
-    if (thisYearBday == null || thisYearBday.isAfter(todayOnly)) {
-      age--; // 今年生日还没过，或今年没这个农历日期
-    }
+    final age = today.year - entry.year;
     return age < 0 ? 0 : age;
   }
 }

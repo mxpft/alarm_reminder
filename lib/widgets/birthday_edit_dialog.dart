@@ -1,23 +1,23 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:crop_your_image/crop_your_image.dart' show Crop, CropController, CropSuccess;
+import 'package:crop_your_image/crop_your_image.dart'
+    show Crop, CropController, CropSuccess;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-// import 'package:lunar_flutter/lunar.dart';
 import 'package:lunar/lunar.dart';
+import 'package:path_provider/path_provider.dart';
+
 import '../data/birthday_repository.dart';
 import '../models/birthday_entry.dart';
 import '../models/birthday_type.dart';
+import '../theme/app_colors.dart';
+import 'custom_date_picker.dart';
+import 'custom_time_picker.dart';
 import 'lunar_date_picker.dart';
 
-/// 新增 / 编辑生日的弹窗。
-///
-/// 表单：姓名（必填）、备注（选填）、生日类型（公历/农历单选）、日期选择器
-/// （公历用系统日历，农历用 [LunarDatePicker] 滚轮）。
-/// 保存后通过 Navigator.pop 返回一条 [BirthdayEntry]。
+/// 新增 / 编辑生日页面。
 class BirthdayEditDialog extends StatefulWidget {
-  /// 传入则为编辑模式，否则为新增。
   final BirthdayEntry? existing;
 
   const BirthdayEditDialog({super.key, this.existing});
@@ -32,18 +32,14 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
 
   late BirthdayType _type;
 
-  // 提醒配置
   late int _remindHour;
   late int _remindMinute;
   late bool _notify3DaysBefore;
 
-  // 头像
   String? _avatarPath;
   final _picker = ImagePicker();
 
-  // 公历选择
   late int _gYear, _gMonth, _gDay;
-  // 农历选择
   late int _lYear, _lMonth, _lDay;
   late bool _lLeap;
 
@@ -60,13 +56,10 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
     _nameCtrl = TextEditingController(text: e?.name ?? '');
     _remarkCtrl = TextEditingController(text: e?.remark ?? '');
 
-    // 当前公历日期（新增默认值）。
     _gYear = e?.year ?? now.year;
     _gMonth = e?.month ?? now.month;
     _gDay = e?.day ?? now.day;
 
-    // 当前农历日期（新增默认值）。
-    // lunar 1.7.8：闰月时 getMonth() 返回负数，故取绝对值存正数月，用 <0 判断闰月。
     final lunar = Solar.fromYmd(now.year, now.month, now.day).getLunar();
     _lYear = e?.year ?? lunar.getYear();
     _lMonth = e?.month ?? lunar.getMonth().abs();
@@ -75,11 +68,17 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
 
     _type = e?.type ?? BirthdayType.gregorian;
 
-    // 提醒配置：编辑时读已有值，新增默认 9:00 + 提前3天提醒。
     _remindHour = e?.remindHour ?? 9;
     _remindMinute = e?.remindMinute ?? 0;
-    _notify3DaysBefore = e?.notify3DaysBefore ?? true;
+    _notify3DaysBefore = e?.notify3DaysBefore ?? false;
     _avatarPath = e?.avatarPath;
+
+    // 页面打开后主动收起键盘，避免自动弹出
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FocusScope.of(context).unfocus();
+      }
+    });
   }
 
   @override
@@ -91,79 +90,366 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(_isEdit ? '编辑生日' : '新增生日'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: _buildAvatarField()),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nameCtrl,
-                autofocus: !_isEdit,
-                decoration: const InputDecoration(
-                  labelText: '姓名 *',
-                  hintText: '例如：妈妈',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? '请输入姓名' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _remarkCtrl,
-                decoration: const InputDecoration(
-                  labelText: '备注（选填）',
-                  hintText: '例如：老家习俗按农历过',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 生日类型：公历 / 农历 单选
-              SegmentedButton<BirthdayType>(
-                segments: const [
-                  ButtonSegment(
-                    value: BirthdayType.gregorian,
-                    label: Text('公历生日'),
-                    icon: Icon(Icons.calendar_today),
-                  ),
-                  ButtonSegment(
-                    value: BirthdayType.lunar,
-                    label: Text('农历生日'),
-                    icon: Icon(Icons.circle_outlined),
-                  ),
-                ],
-                selected: {_type},
-                onSelectionChanged: (s) => setState(() => _type = s.first),
-              ),
-              const SizedBox(height: 16),
-              _buildDateField(),
-              const SizedBox(height: 16),
-              _buildRemindTimeField(),
-              const SizedBox(height: 8),
-              _buildRemind3DaysSwitch(),
-            ],
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          _isEdit ? '编辑生日' : '新增生日',
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 头像
+                Center(child: _buildAvatarField()),
+                const SizedBox(height: 28),
+                // 姓名
+                _FieldLabel(text: '姓名', required: true),
+                const SizedBox(height: 10),
+                _buildNameField(),
+                const SizedBox(height: 24),
+                // 类型切换
+                _buildTypeSwitch(),
+                const SizedBox(height: 24),
+                // 出生日期
+                _FieldLabel(text: '出生日期', required: true),
+                const SizedBox(height: 10),
+                _buildDateField(),
+                const SizedBox(height: 20),
+                // 提醒时间
+                _FieldLabel(text: '提醒时间', required: true),
+                const SizedBox(height: 10),
+                _buildRemindTimeField(),
+                const SizedBox(height: 20),
+                // 备注
+                _FieldLabel(text: '备注（选填）'),
+                const SizedBox(height: 10),
+                _buildRemarkField(),
+              ],
+            ),
+          ),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: const Text('保存'),
-        ),
-      ],
+      ),
+      bottomNavigationBar: _buildBottomBar(),
     );
   }
 
-  /// 日期选择入口：展示当前所选日期，点击弹出对应日历。
+  // ========== 头像 ==========
+  Widget _buildAvatarField() {
+    final hasAvatar = _avatarPath != null && File(_avatarPath!).existsSync();
+    return GestureDetector(
+      onTap: _pickAvatar,
+      onLongPress: hasAvatar
+          ? () => setState(() => _avatarPath = null)
+          : null,
+      child: Container(
+        width: 110,
+        height: 110,
+        decoration: const BoxDecoration(
+          color: AppColors.bgLight,
+          shape: BoxShape.circle,
+        ),
+        child: hasAvatar
+            ? ClipOval(
+                child: Image.file(
+                  File(_avatarPath!),
+                  fit: BoxFit.cover,
+                ),
+              )
+            : const Icon(
+                Icons.add_a_photo,
+                size: 40,
+                color: AppColors.textPlaceholder,
+              ),
+      ),
+    );
+  }
+
+  /// 彻底收起键盘（防止 Dialog 关闭后焦点恢复）
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
+  }
+
+  Future<void> _pickAvatar() async {
+    final picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    );
+    if (picked == null) return;
+
+    final croppedPath = await _showCropDialog(picked.path);
+    if (croppedPath != null) {
+      setState(() => _avatarPath = croppedPath);
+    }
+    // 彻底收起键盘
+    _dismissKeyboard();
+  }
+
+  Future<String?> _showCropDialog(String imagePath) async {
+    final data = await File(imagePath).readAsBytes();
+    if (!mounted) return null;
+    final controller = CropController();
+    Uint8List? result;
+
+    await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                '裁剪头像',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 320,
+              child: Crop(
+                image: data,
+                controller: controller,
+                aspectRatio: 1,
+                onCropped: (cropped) {
+                  if (cropped is CropSuccess) {
+                    result = cropped.croppedImage;
+                  }
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('取消'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () => controller.crop(),
+                    child: const Text('确定'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == null) return null;
+
+    // 保存到 App 私有文档目录，系统不会清理
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final avatarDir = Directory('${appDir.path}/avatars');
+      if (!await avatarDir.exists()) {
+        await avatarDir.create(recursive: true);
+      }
+      final avatarFile = File(
+        '${avatarDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await avatarFile.writeAsBytes(result!);
+      debugPrint('头像已保存到: ${avatarFile.path}');
+      return avatarFile.path;
+    } catch (e) {
+      debugPrint('头像保存失败: $e');
+      return null;
+    }
+  }
+
+  // ========== 输入框 ==========
+  Widget _buildNameField() {
+    return TextFormField(
+      controller: _nameCtrl,
+      style: const TextStyle(
+        fontSize: 16,
+        color: AppColors.textPrimary,
+      ),
+      decoration: _inputDecoration('请输入姓名'),
+      validator: (v) =>
+          (v == null || v.trim().isEmpty) ? '请输入姓名' : null,
+    );
+  }
+
+  Widget _buildRemarkField() {
+    return TextFormField(
+      controller: _remarkCtrl,
+      style: const TextStyle(
+        fontSize: 16,
+        color: AppColors.textPrimary,
+      ),
+      decoration: _inputDecoration('请输入备注（选填）').copyWith(
+        counterText: '',
+      ),
+      maxLines: 3,
+      minLines: 2,
+      maxLength: 200,
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(
+        color: AppColors.textPlaceholder,
+        fontSize: 16,
+      ),
+      filled: true,
+      fillColor: AppColors.bgCard,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: AppColors.primary,
+          width: 1.5,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: Colors.red,
+          width: 1,
+        ),
+      ),
+    );
+  }
+
+  // ========== 类型切换 ==========
+  Widget _buildTypeSwitch() {
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: AppColors.bgLight,
+        borderRadius: BorderRadius.circular(26),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _type = BirthdayType.gregorian),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: _type == BirthdayType.gregorian
+                      ? AppColors.primaryLight
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check,
+                      size: 20,
+                      color: _type == BirthdayType.gregorian
+                          ? AppColors.primary
+                          : Colors.transparent,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '公历生日',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: _type == BirthdayType.gregorian
+                            ? AppColors.primary
+                            : AppColors.textBody,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _type = BirthdayType.lunar),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: _type == BirthdayType.lunar
+                      ? AppColors.primaryLight
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.circle_outlined,
+                      size: 20,
+                      color: _type == BirthdayType.lunar
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '农历生日',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: _type == BirthdayType.lunar
+                            ? AppColors.primary
+                            : AppColors.textBody,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ========== 日期选择 ==========
   Widget _buildDateField() {
     final text = _type == BirthdayType.gregorian
         ? '$_gYear 年 $_gMonth 月 $_gDay 日'
@@ -172,24 +458,40 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
 
     return InkWell(
       onTap: _pickDate,
-      borderRadius: BorderRadius.circular(8),
-      child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: '生日日期 *',
-          border: OutlineInputBorder(),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
         ),
         child: Row(
           children: [
             Icon(
               _type == BirthdayType.gregorian
                   ? Icons.calendar_today
-                  : Icons.circle_outlined,
-              size: 20,
+                  : Icons.circle,
+              size: 22,
+              color: AppColors.iconGray,
             ),
-            const SizedBox(width: 8),
-            Text(text, style: const TextStyle(fontSize: 16)),
-            const Spacer(),
-            const Icon(Icons.arrow_drop_down),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: AppColors.textBody,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.arrow_drop_down,
+              color: AppColors.iconGray,
+            ),
           ],
         ),
       ),
@@ -198,8 +500,8 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
 
   Future<void> _pickDate() async {
     if (_type == BirthdayType.gregorian) {
-      final picked = await showDatePicker(
-        context: context,
+      final picked = await CustomDatePicker.show(
+        context,
         initialDate: DateTime(_gYear, _gMonth, _gDay),
         firstDate: DateTime(1900),
         lastDate: DateTime(2100),
@@ -214,183 +516,111 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
     } else {
       await _pickLunarDate();
     }
-  }
-
-  /// 头像选择：圆形头像，点击从相册选图；有头像时长按删除。
-  Widget _buildAvatarField() {
-    final hasAvatar = _avatarPath != null && File(_avatarPath!).existsSync();
-    return GestureDetector(
-      onTap: _pickAvatar,
-      onLongPress: hasAvatar
-          ? () => setState(() => _avatarPath = null)
-          : null,
-      child: CircleAvatar(
-        radius: 40,
-        backgroundColor: Colors.grey.shade200,
-        backgroundImage: hasAvatar ? FileImage(File(_avatarPath!)) : null,
-        child: hasAvatar
-            ? null
-            : const Icon(Icons.add_a_photo, size: 32, color: Colors.grey),
-      ),
-    );
-  }
-
-  Future<void> _pickAvatar() async {
-    final picked = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-    );
-    if (picked == null) return;
-
-    // 选完图后弹出裁剪界面
-    final croppedPath = await _showCropDialog(picked.path);
-    if (croppedPath != null) {
-      setState(() => _avatarPath = croppedPath);
-    }
-  }
-
-  /// 弹出裁剪界面，返回裁剪后的文件路径。
-  Future<String?> _showCropDialog(String imagePath) async {
-    final data = await File(imagePath).readAsBytes();
-    final controller = CropController();
-    Uint8List? result;
-
-    await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => Dialog(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Text('裁剪头像', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            ),
-            SizedBox(
-              height: 300,
-              child: Crop(
-                image: data,
-                controller: controller,
-                aspectRatio: 1, // 1:1 方形
-                onCropped: (cropped) {
-                  if (cropped is CropSuccess) {
-                    result = cropped.croppedImage;
-                  }
-                  if (ctx.mounted) Navigator.of(ctx).pop();
-                },
-              ),
-            ),
-            OverflowBar(
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => controller.crop(),
-                  child: const Text('确定'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (result == null) return null;
-
-    // 保存裁剪后的图片到临时文件
-    final tempDir = Directory.systemTemp;
-    final tempFile = File('${tempDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg');
-    await tempFile.writeAsBytes(result!);
-    return tempFile.path;
-  }
-
-  /// 提醒时间选择入口：展示当前 HH:MM，点击弹出系统时间选择器。
-  Widget _buildRemindTimeField() {
-    final hh = _remindHour.toString().padLeft(2, '0');
-    final mm = _remindMinute.toString().padLeft(2, '0');
-    return InkWell(
-      onTap: _pickRemindTime,
-      borderRadius: BorderRadius.circular(8),
-      child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: '当天提醒时间',
-          border: OutlineInputBorder(),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.access_time, size: 20),
-            const SizedBox(width: 8),
-            Text('$hh:$mm', style: const TextStyle(fontSize: 16)),
-            const Spacer(),
-            const Icon(Icons.arrow_drop_down),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickRemindTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: _remindHour, minute: _remindMinute),
-    );
-    if (picked != null) {
-      setState(() {
-        _remindHour = picked.hour;
-        _remindMinute = picked.minute;
-      });
-    }
-  }
-
-  /// 是否提前 3 天提醒的开关。
-  Widget _buildRemind3DaysSwitch() {
-    return SwitchListTile(
-      contentPadding: EdgeInsets.zero,
-      title: const Text('提前 3 天也提醒'),
-      subtitle: const Text('生日前 3 天的同一时间再提醒一次'),
-      value: _notify3DaysBefore,
-      onChanged: (v) => setState(() => _notify3DaysBefore = v),
-    );
+    // 收起键盘
+    _dismissKeyboard();
   }
 
   Future<void> _pickLunarDate() async {
-    var selection = LunarSelection(_lYear, _lMonth, _lDay, isLeap: _lLeap);
+    var selection = LunarSelection(
+      _lYear,
+      _lMonth,
+      _lDay,
+      isLeap: _lLeap,
+    );
     final picked = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('选择农历日期'),
-        content: StatefulBuilder(
-          builder: (ctx, setDialogState) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${selection.year} 年 ${selection.monthName}${selection.dayName}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              LunarDatePicker(
-                initialYear: selection.year,
-                initialMonth: selection.month,
-                initialDay: selection.day,
-                initialIsLeap: selection.isLeap,
-                onChanged: (s) => setDialogState(() => selection = s),
-              ),
-            ],
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+        child: StatefulBuilder(
+          builder: (ctx, setDialogState) => Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 标题
+                const Text(
+                  '选择农历日期',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // 当前选中日期
+                Center(
+                  child: Text(
+                    '${selection.year} 年 ${selection.monthName}${selection.dayName}',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // 滚轮
+                LunarDatePicker(
+                  initialYear: selection.year,
+                  initialMonth: selection.month,
+                  initialDay: selection.day,
+                  initialIsLeap: selection.isLeap,
+                  onChanged: (s) => setDialogState(() => selection = s),
+                ),
+                const SizedBox(height: 20),
+                // 底部按钮
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                      ),
+                      child: const Text(
+                        '取消',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(28),
+                        ),
+                      ),
+                      child: const Text(
+                        '确定',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('确定'),
-          ),
-        ],
       ),
     );
     if (picked == true) {
@@ -403,6 +633,171 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
     }
   }
 
+  // ========== 提醒时间 ==========
+  Widget _buildRemindTimeField() {
+    final hh = _remindHour.toString().padLeft(2, '0');
+    final mm = _remindMinute.toString().padLeft(2, '0');
+
+    return InkWell(
+      onTap: _pickRemindTime,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.access_time_filled,
+              size: 22,
+              color: AppColors.iconGray,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '$hh:$mm',
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: AppColors.textBody,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.arrow_drop_down,
+              color: AppColors.iconGray,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickRemindTime() async {
+    final picked = await CustomTimePicker.show(
+      context,
+      initialTime: TimeOfDay(hour: _remindHour, minute: _remindMinute),
+    );
+    if (picked != null) {
+      setState(() {
+        _remindHour = picked.hour;
+        _remindMinute = picked.minute;
+      });
+    }
+    // 收起键盘
+    _dismissKeyboard();
+  }
+
+  // ========== 提前3天开关 ==========
+  Widget _buildRemind3DaysSwitch() {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '提前 3 天也提醒',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textBody,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '生日前 3 天的同一时间再提醒一次',
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppColors.textPlaceholder,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: _notify3DaysBefore,
+          onChanged: (v) => setState(() => _notify3DaysBefore = v),
+          activeThumbColor: Colors.white,
+          activeTrackColor: AppColors.primary,
+          inactiveThumbColor: Colors.white,
+          inactiveTrackColor: AppColors.trackGray,
+        ),
+      ],
+    );
+  }
+
+  // ========== 底部按钮 ==========
+  Widget _buildBottomBar() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: AppColors.bgLight,
+            width: 1,
+          ),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        12 + MediaQuery.of(context).padding.bottom,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
+                ),
+              ),
+              child: const Text(
+                '取消',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: FilledButton(
+              onPressed: _save,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
+                ),
+              ),
+              child: const Text(
+                '保存',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ========== 保存 ==========
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -427,6 +822,42 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
       remindMinute: _remindMinute,
       notify3DaysBefore: _notify3DaysBefore,
       avatarPath: _avatarPath,
+    );
+  }
+}
+
+/// 表单字段标签。
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  final bool required;
+
+  const _FieldLabel({
+    required this.text,
+    this.required = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textBody,
+          ),
+        ),
+        if (required)
+          const Text(
+            ' *',
+            style: TextStyle(
+              fontSize: 16,
+              color: AppColors.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+      ],
     );
   }
 }

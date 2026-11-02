@@ -2,15 +2,17 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../data/birthday_repository.dart';
 import '../models/birthday_entry.dart';
 import '../models/birthday_type.dart';
 import '../services/birthday_calculator.dart';
 import '../services/notification_service.dart';
+import '../theme/app_colors.dart';
 import '../widgets/birthday_edit_dialog.dart';
 
-/// 生日列表页：展示全部生日，按「距离下一次生日剩余天数」升序排序。
+/// 生日列表页。
 class BirthdayListPage extends StatefulWidget {
   final BirthdayRepository repo;
   final NotificationService notification;
@@ -31,10 +33,17 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
   @override
   void initState() {
     super.initState();
+    _loadPermissionHintShown();
     _bootstrap();
   }
 
-  /// 启动时：申请通知权限 + 重新调度全部通知（打开即刷新，补偿农历跨年/重启丢失）。
+  /// 从 Hive 读取是否已经显示过权限引导弹窗
+  Future<void> _loadPermissionHintShown() async {
+    final box = await Hive.openBox('settings');
+    _permissionHintShown = box.get('permission_hint_shown', defaultValue: false);
+  }
+
+  /// 启动时：申请通知权限 + 重新调度全部通知。
   Future<void> _bootstrap() async {
     try {
       await widget.notification.requestPermissions();
@@ -45,32 +54,20 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
     }
   }
 
-  /// 安卓端：引导用户授予精确闹钟、允许后台活动、关闭电池优化。
+  /// 安卓端：引导用户授予精确闹钟、允许后台活动。
   void _maybeShowAndroidHint() {
     if (Platform.isAndroid && !_permissionHintShown) {
-      _permissionHintShown = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
-        showDialog<void>(
+        await showDialog<void>(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('为确保提醒准时送达'),
-            content: const Text(
-              '部分安卓系统（小米/华为/OPPO/vivo 等）会限制后台闹钟，'
-              '请手动完成以下设置，否则提醒可能被系统清理：\n\n'
-              '① 关闭「电池优化 / 后台冻结」\n'
-              '② 允许「自启动 / 后台活动」\n'
-              '③ 授予「精确闹钟」权限\n\n'
-              '设置路径通常在：系统设置 → 应用管理 → 本应用 → 电池/权限。',
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('知道了'),
-              ),
-            ],
-          ),
+          barrierColor: Colors.black.withValues(alpha: 0.5),
+          builder: (ctx) => const _PermissionGuideDialog(),
         );
+        // 用户点击"知道了"后，永久记录不再弹出
+        _permissionHintShown = true;
+        final box = await Hive.openBox('settings');
+        await box.put('permission_hint_shown', true);
       });
     }
   }
@@ -95,9 +92,8 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
 
   Future<void> _testScheduledNotification() async {
     try {
-      await widget.notification.testScheduleLater(0);
+      await widget.notification.testScheduleLater();
       if (mounted) {
-        // 带倒计时的 SnackBar
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             duration: const Duration(seconds: 11),
@@ -121,32 +117,30 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
     );
     if (entry == null) return;
 
-    // 修改时：先删除旧的日历事件，再把 calendarEventId 清空，让 rescheduleAll 创建新的
     if (existing != null) {
       await widget.notification.cancelForEntry(existing);
-      entry.calendarEventId = null; // 清空，触发 rescheduleAll 创建新事件
+      entry.calendarEventId = null;
     }
 
     await widget.repo.save(entry);
-    // 新增 / 修改后：立刻重新调度通知。
     await widget.notification.rescheduleAll(widget.repo, DateTime.now());
 
-    // 检查日历事件是否创建成功
     final updated = widget.repo.box.get(entry.id);
     final calendarOk = updated?.calendarEventId != null;
 
-    // 操作成功提示
     if (mounted) {
       final baseText = existing == null ? '新增成功' : '修改成功';
       final String fullText;
       if (calendarOk) {
         fullText = baseText;
       } else {
-        final err = widget.notification.calendarLastError ?? '日历权限未开启';
-        fullText = '$baseText（日历同步失败：$err）';
+        fullText = '$baseText（本地提醒已设置）';
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(fullText)),
+        SnackBar(
+          content: Text(fullText),
+          duration: const Duration(seconds: 3),
+        ),
       );
     }
   }
@@ -154,29 +148,59 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
   Future<void> _confirmDelete(BirthdayEntry entry) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除生日'),
-        content: Text('确定删除「${entry.name}」的生日记录吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('取消'),
+      barrierColor: Colors.black.withValues(alpha: 0.5),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '确定删除「${entry.name}」的生日记录吗？此操作不可恢复。',
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.6,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('取消'),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text(
+                      '删除',
+                      style: TextStyle(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('删除'),
-          ),
-        ],
+        ),
       ),
     );
     if (ok != true) return;
 
-    // 删除后：取消其已排定通知 + 移除记录 + 全量重排。
     await widget.notification.cancelForEntry(entry);
     await widget.repo.delete(entry.id);
     await widget.notification.rescheduleAll(widget.repo, DateTime.now());
 
-    // 删除成功提示
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('删除成功')),
@@ -187,84 +211,112 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('生日提醒'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_active_outlined),
-            tooltip: '测试即时通知',
-            onPressed: _testNotification,
-          ),
-          IconButton(
-            icon: const Icon(Icons.timer_outlined),
-            tooltip: '测试定时通知(2分钟后)',
-            onPressed: _testScheduledNotification,
-          ),
-        ],
+      backgroundColor: AppColors.bgPage,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // 固定头部：返回按钮 + 测试按钮（不随列表滚动）
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: _buildGreetingHeader(),
+            ),
+            // 可滚动的列表区域
+            Expanded(
+              child: StreamBuilder<BoxEvent>(
+                stream: widget.repo.box.watch(),
+                builder: (context, snapshot) {
+                  final rows = _buildRows(
+                      widget.repo.box.values.toList(), DateTime.now());
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                    physics: const ClampingScrollPhysics(),
+                    children: [
+                      // 生日列表或空状态
+                      if (rows.isEmpty)
+                        const _EmptyView()
+                      else
+                        for (var i = 0; i < rows.length; i++) ...[
+                          _BirthdayListTile(
+                            row: rows[i],
+                            onTap: () => _openEditor(rows[i].entry),
+                            onDelete: () => _confirmDelete(rows[i].entry),
+                          ),
+                          if (i < rows.length - 1) const SizedBox(height: 16),
+                        ],
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
-      // Hive 2.2.3 没有 listenable()，用 box.watch() 监听数据变化。
-      body: StreamBuilder<BoxEvent>(
-        stream: widget.repo.box.watch(),
-        builder: (context, snapshot) {
-          final rows = _buildRows(widget.repo.box.values.toList(), DateTime.now());
-          if (rows.isEmpty) {
-            return const _EmptyView();
-          }
-          return ListView.separated(
-            itemCount: rows.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final row = rows[index];
-              return ListTile(
-                title: Text(row.entry.name),
-                subtitle: row.entry.remark == null
-                    ? Text(row.subtitle)
-                    : Text('${row.entry.remark}  ·  ${row.subtitle}'),
-                leading: _buildLeading(row.entry),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      row.daysText,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: row.days == 0
-                            ? Theme.of(context).colorScheme.error
-                            : null,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _confirmDelete(row.entry),
-                    ),
-                  ],
-                ),
-                onTap: () => _openEditor(row.entry),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditor(),
-        icon: const Icon(Icons.add),
-        label: const Text('新增生日'),
+        backgroundColor: AppColors.primary,
+        elevation: 4,
+        shape: const CircleBorder(),
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
     );
   }
 
-  /// 列表左侧头像：有上传头像显示图片，否则显示姓名首字母。
-  Widget _buildLeading(BirthdayEntry entry) {
-    final p = entry.avatarPath;
-    if (p != null && File(p).existsSync()) {
-      return CircleAvatar(backgroundImage: FileImage(File(p)));
-    }
-    return CircleAvatar(
-      child: Text(entry.name.isNotEmpty ? entry.name[0] : '?'),
+  /// 顶部问候区
+  Widget _buildGreetingHeader() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 返回按钮
+        IconButton(
+          icon: const Icon(Icons.arrow_back_rounded,
+              color: AppColors.textPrimary),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // const Text(
+              //   '你好\nLittleButler',
+              //   style: TextStyle(
+              //     fontSize: 28,
+              //     fontWeight: FontWeight.w700,
+              //     color: AppColors.textPrimary,
+              //     height: 1.2,
+              //     letterSpacing: -0.5,
+              //   ),
+              // ),
+              // const SizedBox(height: 8),
+              // Text(
+              //   '不错过重要的日子，不遗失值得珍藏的记忆。',
+              //   style: TextStyle(
+              //     fontSize: 14,
+              //     color: AppColors.textSecondary,
+              //     height: 1.4,
+              //   ),
+              // ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        // 测试按钮
+        IconButton(
+          icon: const Icon(Icons.notifications_none_rounded,
+              color: AppColors.textSecondary),
+          tooltip: '测试即时通知',
+          onPressed: _testNotification,
+        ),
+        IconButton(
+          icon: const Icon(Icons.timer_outlined,
+              color: AppColors.textSecondary),
+          tooltip: '测试定时通知',
+          onPressed: _testScheduledNotification,
+        ),
+      ],
     );
   }
 
-  /// 计算每一条生日的展示行，并按剩余天数升序排序。
   List<_BirthdayRow> _buildRows(List<BirthdayEntry> entries, DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
     final rows = <_BirthdayRow>[];
@@ -282,9 +334,13 @@ class _BirthdayRow {
   final BirthdayEntry entry;
   final BirthdayOccurrence occurrence;
   final int days;
-  _BirthdayRow({required this.entry, required this.occurrence, required this.days});
+  _BirthdayRow({
+    required this.entry,
+    required this.occurrence,
+    required this.days,
+  });
 
-  String get subtitle {
+  String get infoLine {
     final typeText = entry.type == BirthdayType.gregorian ? '公历' : '农历';
     final sx = BirthdayCalculator.shengXiaoOf(entry);
     final age = BirthdayCalculator.ageOf(entry, DateTime.now());
@@ -300,21 +356,289 @@ class _BirthdayRow {
   }
 }
 
-class _EmptyView extends StatelessWidget {
-  const _EmptyView();
+/// 列表项卡片。
+class _BirthdayListTile extends StatelessWidget {
+  final _BirthdayRow row;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  const _BirthdayListTile({
+    required this.row,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  /// 判断这个生日是否在本月
+  bool _isBirthdayThisMonth(_BirthdayRow row) {
+    final now = DateTime.now();
+    final occ = row.occurrence.date;
+    return occ.year == now.year && occ.month == now.month;
+  }
+
+  /// 判断今天是否过生日
+  bool _isToday(_BirthdayRow row) {
+    return row.days == 0;
+  }
+
+  /// 生肖 emoji 映射
+  String _shengXiaoEmoji(String shengXiao) {
+    switch (shengXiao) {
+      case '鼠': return '🐭';
+      case '牛': return '🐮';
+      case '虎': return '🐯';
+      case '兔': return '🐰';
+      case '龙': return '🐲';
+      case '蛇': return '🐍';
+      case '马': return '🐴';
+      case '羊': return '🐑';
+      case '猴': return '🐵';
+      case '鸡': return '🐔';
+      case '狗': return '🐶';
+      case '猪': return '🐷';
+      default: return '✨';
+    }
+  }
+
+  /// 生肖徽章背景色
+  Color _shengXiaoBgColor(String shengXiao) {
+    switch (shengXiao) {
+      case '鼠': return const Color(0xFFEFF6FF);
+      case '牛': return const Color(0xFFF0FDF4);
+      case '虎': return const Color(0xFFFEF2F2);
+      case '兔': return const Color(0xFFFDF2F8);
+      case '龙': return const Color(0xFFECFDF5);
+      case '蛇': return const Color(0xFFF0F9FF);
+      case '马': return const Color(0xFFFFFBEB);
+      case '羊': return const Color(0xFFFDF4FF);
+      case '猴': return const Color(0xFFFFF7ED);
+      case '鸡': return const Color(0xFFFFF1F2);
+      case '狗': return const Color(0xFFF0F9FF);
+      case '猪': return const Color(0xFFFFF0F6);
+      default: return const Color(0xFFF3F4F6);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Column(
+    final shengXiao = BirthdayCalculator.shengXiaoOf(row.entry);
+    final age = BirthdayCalculator.ageOf(row.entry, DateTime.now());
+    final hasNote = row.entry.remark != null && row.entry.remark!.isNotEmpty;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onDelete,
+          borderRadius: BorderRadius.circular(24),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Stack(
+              children: [
+                // 左侧渐变竖线（今天过生日才显示）
+                  if (_isToday(row))
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 6,
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Color(0xFFEF4444), Color(0xFFF59E0B)],
+                          ),
+                          borderRadius: BorderRadius.only(
+                            topRight: Radius.circular(6),
+                            bottomRight: Radius.circular(6),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 头像
+                        _LeadingAvatar(entry: row.entry),
+                        const SizedBox(width: 14),
+                        // 中间信息
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 第一行：左边 姓名+年龄+生肖，右边 状态标签
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Text(
+                                          row.entry.name,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF1E293B),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        // 生肖徽章（只显示 emoji）
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF1F5F9),
+                                            borderRadius: BorderRadius.circular(20),
+                                            border: Border.all(
+                                                color: const Color(0xFFE2E8F0),
+                                                width: 1),
+                                          ),
+                                          child: Text(_shengXiaoEmoji(shengXiao),
+                                              style: const TextStyle(fontSize: 13)),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        // 年龄徽章
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFFBEB),
+                                            borderRadius: BorderRadius.circular(20),
+                                            border: Border.all(
+                                                color: const Color(0xFFFDE68A),
+                                                width: 1),
+                                          ),
+                                          child: Text(
+                                            '$age岁',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Color(0xFFB45309),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // 状态标签（今天/还有X天）
+                                  if (_isBirthdayThisMonth(row))
+                                    _DaysBadge(days: row.days, text: row.daysText),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              // 第二行：日历图标 + 公历/农历 · 录入的生日日期
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_month_outlined,
+                                    size: 14,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    row.entry.type == BirthdayType.gregorian
+                                        ? '公历 · ${row.entry.year}年${row.entry.month}月${row.entry.day}日'
+                                        : '农历 · ${row.entry.year}年${lunarMonthNameOf(row.entry.month)}${lunarDayNameOf(row.entry.day)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // 第三行：备注（上面有分隔线）
+                              if (hasNote) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  height: 1,
+                                  color: const Color(0xFFF1F5F9),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  row.entry.remark!,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF64748B),
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+    );
+  }
+}
+
+/// 天数标签（"今天"红色，其他蓝色）。
+class _DaysBadge extends StatelessWidget {
+  final int days;
+  final String text;
+
+  const _DaysBadge({
+    required this.days,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isToday = days == 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: isToday ? const Color(0xFFFEF2F2) : const Color(0xFFEEF2FF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isToday ? const Color(0xFFFECACA) : const Color(0xFFE0E7FF),
+          width: 1,
+        ),
+      ),
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.cake_outlined, size: 72, color: Colors.grey.shade400),
-          const SizedBox(height: 12),
+          if (isToday) ...[
+            Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                color: Color(0xFFEF4444),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
           Text(
-            '还没有生日记录\n点右下角「新增生日」开始添加',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600),
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isToday ? const Color(0xFFE11D48) : const Color(0xFF4F46E5),
+            ),
           ),
         ],
       ),
@@ -322,20 +646,191 @@ class _EmptyView extends StatelessWidget {
   }
 }
 
-/// 10秒倒计时显示组件
+class _LeadingAvatar extends StatelessWidget {
+  final BirthdayEntry entry;
+  const _LeadingAvatar({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = entry.avatarPath;
+    if (p != null && File(p).existsSync()) {
+      return CircleAvatar(
+        radius: 26,
+        backgroundImage: FileImage(File(p)),
+      );
+    }
+    return CircleAvatar(
+      radius: 26,
+      backgroundColor: AppColors.primaryLight,
+      child: Text(
+        entry.name.isNotEmpty ? entry.name[0] : '?',
+        style: const TextStyle(
+          fontSize: 20,
+          color: AppColors.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// 空状态视图。
+class _EmptyView extends StatelessWidget {
+  const _EmptyView();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.6,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 蛋糕图标
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight.withValues(alpha: 0.3),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.cake_outlined,
+                size: 48,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              '还没有生日记录',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textBody,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '点击右下角按钮，开始添加第一个生日',
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.textPlaceholder,
+            ),
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+/// 蛋糕图标画笔（简约线条风格）。
+class _CakeIconPainter extends CustomPainter {
+  const _CakeIconPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.trackGray
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+
+    final w = size.width;
+    final h = size.height;
+
+    // 蛋糕底座（椭圆）
+    final baseRect = Rect.fromLTWH(w * 0.15, h * 0.7, w * 0.7, h * 0.15);
+    canvas.drawOval(baseRect, paint);
+
+    // 蛋糕主体（矩形，底部圆角）
+    final bodyPath = Path()
+      ..moveTo(w * 0.2, h * 0.55)
+      ..lineTo(w * 0.2, h * 0.72)
+      ..arcToPoint(
+        Offset(w * 0.25, h * 0.78),
+        radius: const Radius.circular(8),
+      )
+      ..lineTo(w * 0.75, h * 0.78)
+      ..arcToPoint(
+        Offset(w * 0.8, h * 0.72),
+        radius: const Radius.circular(8),
+      )
+      ..lineTo(w * 0.8, h * 0.55)
+      ..close();
+    canvas.drawPath(bodyPath, paint);
+
+    // 蛋糕顶部波浪线（奶油）
+    final creamPath = Path()
+      ..moveTo(w * 0.2, h * 0.55)
+      ..quadraticBezierTo(w * 0.3, h * 0.5, w * 0.4, h * 0.55)
+      ..quadraticBezierTo(w * 0.5, h * 0.6, w * 0.6, h * 0.55)
+      ..quadraticBezierTo(w * 0.7, h * 0.5, w * 0.8, h * 0.55);
+    canvas.drawPath(creamPath, paint);
+
+    // 蜡烛
+    canvas.drawLine(
+      Offset(w * 0.5, h * 0.3),
+      Offset(w * 0.5, h * 0.5),
+      paint,
+    );
+
+    // 火焰
+    final flamePath = Path()
+      ..moveTo(w * 0.5, h * 0.22)
+      ..quadraticBezierTo(w * 0.55, h * 0.26, w * 0.5, h * 0.32)
+      ..quadraticBezierTo(w * 0.45, h * 0.26, w * 0.5, h * 0.22)
+      ..close();
+    canvas.drawPath(flamePath, paint);
+
+    // 装饰小点
+    final dotPaint = Paint()
+      ..color = AppColors.trackGray
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(w * 0.3, h * 0.65), 2, dotPaint);
+    canvas.drawCircle(Offset(w * 0.7, h * 0.65), 2, dotPaint);
+
+    // 周围装饰小十字/加号
+    _drawPlus(canvas, w * 0.12, h * 0.45, 6, paint);
+    _drawPlus(canvas, w * 0.88, h * 0.4, 6, paint);
+    _drawPlus(canvas, w * 0.15, h * 0.25, 4, paint);
+    _drawPlus(canvas, w * 0.82, h * 0.2, 4, paint);
+  }
+
+  void _drawPlus(Canvas canvas, double cx, double cy, double size, Paint paint) {
+    canvas.drawLine(
+      Offset(cx - size / 2, cy),
+      Offset(cx + size / 2, cy),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(cx, cy - size / 2),
+      Offset(cx, cy + size / 2),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 10秒倒计时组件。
 class _CountdownTimer extends StatefulWidget {
   @override
   State<_CountdownTimer> createState() => _CountdownTimerState();
 }
 
 class _CountdownTimerState extends State<_CountdownTimer> {
-  int _seconds = 10;
+  final int _seconds = 10;
   late Stream<int> _stream;
 
   @override
   void initState() {
     super.initState();
-    _stream = Stream.periodic(const Duration(seconds: 1), (i) => 10 - i - 1).take(10);
+    _stream = Stream.periodic(
+      const Duration(seconds: 1),
+      (i) => 10 - i - 1,
+    ).take(10);
   }
 
   @override
@@ -344,8 +839,175 @@ class _CountdownTimerState extends State<_CountdownTimer> {
       stream: _stream,
       builder: (context, snapshot) {
         final sec = snapshot.data ?? _seconds;
-        return Text('已排定，${sec}秒后提醒...');
+        return Text('已排定，$sec秒后提醒...');
       },
+    );
+  }
+}
+
+/// 权限引导弹窗。
+class _PermissionGuideDialog extends StatelessWidget {
+  const _PermissionGuideDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 标题
+            const Text(
+              '为确保提醒准时送达',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            // 说明文字
+            const Text(
+              '部分安卓系统（小米/华为/OPPO/vivo 等）会限制后台闹钟，'
+              '请手动完成以下设置，否则影响可能被系统清理：',
+              style: TextStyle(
+                fontSize: 16,
+                height: 1.6,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // 三个步骤
+            _StepItem(
+              number: 1,
+              text: '关闭「电池优化 / 后台冻结」',
+            ),
+            const SizedBox(height: 16),
+            _StepItem(
+              number: 2,
+              text: '允许「自启动 / 后台活动」',
+            ),
+            const SizedBox(height: 16),
+            _StepItem(
+              number: 3,
+              text: '授予「精确闹钟」权限',
+            ),
+            const SizedBox(height: 24),
+            // 分隔线
+            const Divider(
+              height: 1,
+              color: AppColors.divider,
+            ),
+            const SizedBox(height: 20),
+            // 设置路径
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.settings,
+                  size: 20,
+                  color: AppColors.textPlaceholder,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: const Text(
+                    '设置路径通常在：系统设置 → 应用管理 → 本应用 → 电池/权限。',
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.5,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            // 按钮（右对齐）
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                  ),
+                ),
+                child: const Text(
+                  '知道了',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 弹窗步骤项。
+class _StepItem extends StatelessWidget {
+  final int number;
+  final String text;
+
+  const _StepItem({
+    required this.number,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        // 数字圆圈
+        Container(
+          width: 28,
+          height: 28,
+          decoration: const BoxDecoration(
+            color: AppColors.primaryLight,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '$number',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        // 步骤文字
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textBody,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

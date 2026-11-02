@@ -1,8 +1,11 @@
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../data/birthday_repository.dart';
 import '../models/birthday_entry.dart';
+import '../models/birthday_entry_adapter.dart';
 import 'birthday_calculator.dart';
 import 'calendar_service.dart';
 
@@ -27,7 +30,7 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
 
-    const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -84,7 +87,7 @@ class NotificationService {
   }
 
   /// 排10秒后的定时通知（用 AlarmManager）。
-  Future<void> testScheduleLater(int minutes) async {
+  Future<void> testScheduleLater() async {
     await init();
 
     final ok = await AndroidAlarmManager.oneShot(
@@ -149,7 +152,7 @@ class NotificationService {
           alarmCallback,
           exact: true,
           wakeup: true,
-          rescheduleOnReboot: false,
+          rescheduleOnReboot: true,
         );
       }
     }
@@ -172,7 +175,7 @@ class NotificationService {
             alarmCallback,
             exact: true,
             wakeup: true,
-            rescheduleOnReboot: false,
+            rescheduleOnReboot: true,
           );
         }
       }
@@ -216,7 +219,7 @@ class NotificationService {
 Future<void> alarmCallback(int id) async {
   final plugin = FlutterLocalNotificationsPlugin();
 
-  const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
   const iosSettings = DarwinInitializationSettings();
   const settings = InitializationSettings(
     android: androidSettings,
@@ -257,11 +260,58 @@ Future<void> alarmCallback(int id) async {
   String title = '生日提醒';
   String body = '今天有人生日！';
 
-  // 根据 id 判断是哪条通知
   if (id == 9998) {
+    // 10秒测试通知
     title = '定时测试通知';
     body = '10秒倒计时到了！如果看到这条说明定时闹钟正常';
+  } else {
+    // 真实生日通知：从 Hive 找到对应的 entry
+    try {
+      await Hive.initFlutter();
+      if (!Hive.isAdapterRegistered(0)) {
+        Hive.registerAdapter(BirthdayEntryAdapter());
+      }
+      final box = await Hive.openBox<BirthdayEntry>(
+        BirthdayRepository.boxName,
+      );
+
+      BirthdayEntry? matched;
+      var isEarlyReminder = false;
+
+      for (final entry in box.values) {
+        final earlyId = _alarmIdForEntry(entry, 0);
+        final todayId = _alarmIdForEntry(entry, 1);
+        if (id == earlyId) {
+          matched = entry;
+          isEarlyReminder = true;
+          break;
+        }
+        if (id == todayId) {
+          matched = entry;
+          break;
+        }
+      }
+
+      if (matched != null) {
+        if (isEarlyReminder) {
+          title = '生日提醒';
+          body = '3天后是「${matched.name}」的生日，别忘了准备祝福';
+        } else {
+          title = '生日提醒';
+          body = '今天是「${matched.name}」的生日，祝 TA 生日快乐';
+        }
+      }
+    } catch (e) {
+      // Hive 读取失败时，用通用文案兜底
+      debugPrint('闹钟回调读取数据失败: $e');
+    }
   }
 
   await plugin.show(id, title, body, details);
+}
+
+/// 供顶层回调使用的 ID 计算（与类内方法保持一致）。
+int _alarmIdForEntry(BirthdayEntry entry, int slot) {
+  final base = 5000 + (entry.id.hashCode & 0x3fffffff);
+  return base + slot;
 }
