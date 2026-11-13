@@ -84,9 +84,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
     return Dialog(
       backgroundColor: Colors.white,
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 28),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
@@ -248,10 +246,7 @@ class _CustomDatePickerState extends State<CustomDatePicker> {
                   ),
                   child: const Text(
                     '确定',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],

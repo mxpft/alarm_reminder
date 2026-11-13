@@ -33,14 +33,23 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
   @override
   void initState() {
     super.initState();
-    _loadPermissionHintShown();
-    _bootstrap();
+    _init();
+  }
+
+  /// 串起「读已显示标记 → 申请权限 / 重排通知」，
+  /// 必须先读到标记，否则每次冷启动都会重复弹权限引导
+  Future<void> _init() async {
+    await _loadPermissionHintShown();
+    await _bootstrap();
   }
 
   /// 从 Hive 读取是否已经显示过权限引导弹窗
   Future<void> _loadPermissionHintShown() async {
     final box = await Hive.openBox('settings');
-    _permissionHintShown = box.get('permission_hint_shown', defaultValue: false);
+    _permissionHintShown = box.get(
+      'permission_hint_shown',
+      defaultValue: false,
+    );
   }
 
   /// 启动时：申请通知权限 + 重新调度全部通知。
@@ -77,15 +86,13 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
       await widget.notification.requestPermissions();
       await widget.notification.testShowNow();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已发送测试通知，下拉通知栏查看')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已发送测试通知，下拉通知栏查看')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('测试通知失败：$e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('测试通知失败：$e')));
       }
     }
   }
@@ -103,9 +110,8 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('定时通知失败：$e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('定时通知失败：$e')));
       }
     }
   }
@@ -137,10 +143,7 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
         fullText = '$baseText（本地提醒已设置）';
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(fullText),
-          duration: const Duration(seconds: 3),
-        ),
+        SnackBar(content: Text(fullText), duration: const Duration(seconds: 3)),
       );
     }
   }
@@ -152,9 +155,7 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
       builder: (ctx) => Dialog(
         backgroundColor: Colors.white,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 28, 24, 16),
           child: Column(
@@ -202,9 +203,8 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
     await widget.notification.rescheduleAll(widget.repo, DateTime.now());
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('删除成功')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('删除成功')));
     }
   }
 
@@ -226,7 +226,9 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
                 stream: widget.repo.box.watch(),
                 builder: (context, snapshot) {
                   final rows = _buildRows(
-                      widget.repo.box.values.toList(), DateTime.now());
+                    widget.repo.box.values.toList(),
+                    DateTime.now(),
+                  );
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
                     physics: const ClampingScrollPhysics(),
@@ -268,48 +270,30 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
       children: [
         // 返回按钮
         IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: AppColors.textPrimary),
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+            color: AppColors.textPrimary,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // const Text(
-              //   '你好\nLittleButler',
-              //   style: TextStyle(
-              //     fontSize: 28,
-              //     fontWeight: FontWeight.w700,
-              //     color: AppColors.textPrimary,
-              //     height: 1.2,
-              //     letterSpacing: -0.5,
-              //   ),
-              // ),
-              // const SizedBox(height: 8),
-              // Text(
-              //   '不错过重要的日子，不遗失值得珍藏的记忆。',
-              //   style: TextStyle(
-              //     fontSize: 14,
-              //     color: AppColors.textSecondary,
-              //     height: 1.4,
-              //   ),
-              // ),
-            ],
-          ),
-        ),
+        // 标题文案已隐藏，用 Spacer 把测试按钮推到右侧
+        const Spacer(),
         const SizedBox(width: 12),
         // 测试按钮
         IconButton(
-          icon: const Icon(Icons.notifications_none_rounded,
-              color: AppColors.textSecondary),
+          icon: const Icon(
+            Icons.notifications_none_rounded,
+            color: AppColors.textSecondary,
+          ),
           tooltip: '测试即时通知',
           onPressed: _testNotification,
         ),
         IconButton(
-          icon: const Icon(Icons.timer_outlined,
-              color: AppColors.textSecondary),
+          icon: const Icon(
+            Icons.timer_outlined,
+            color: AppColors.textSecondary,
+          ),
           tooltip: '测试定时通知',
           onPressed: _testScheduledNotification,
         ),
@@ -339,15 +323,6 @@ class _BirthdayRow {
     required this.occurrence,
     required this.days,
   });
-
-  String get infoLine {
-    final typeText = entry.type == BirthdayType.gregorian ? '公历' : '农历';
-    final sx = BirthdayCalculator.shengXiaoOf(entry);
-    final age = BirthdayCalculator.ageOf(entry, DateTime.now());
-    return '$typeText · ${occurrence.date.year}年'
-        '${occurrence.date.month}月${occurrence.date.day}日'
-        ' · 属$sx · $age岁';
-  }
 
   String get daysText {
     if (days == 0) return '今天';
@@ -383,38 +358,32 @@ class _BirthdayListTile extends StatelessWidget {
   /// 生肖 emoji 映射
   String _shengXiaoEmoji(String shengXiao) {
     switch (shengXiao) {
-      case '鼠': return '🐭';
-      case '牛': return '🐮';
-      case '虎': return '🐯';
-      case '兔': return '🐰';
-      case '龙': return '🐲';
-      case '蛇': return '🐍';
-      case '马': return '🐴';
-      case '羊': return '🐑';
-      case '猴': return '🐵';
-      case '鸡': return '🐔';
-      case '狗': return '🐶';
-      case '猪': return '🐷';
-      default: return '✨';
-    }
-  }
-
-  /// 生肖徽章背景色
-  Color _shengXiaoBgColor(String shengXiao) {
-    switch (shengXiao) {
-      case '鼠': return const Color(0xFFEFF6FF);
-      case '牛': return const Color(0xFFF0FDF4);
-      case '虎': return const Color(0xFFFEF2F2);
-      case '兔': return const Color(0xFFFDF2F8);
-      case '龙': return const Color(0xFFECFDF5);
-      case '蛇': return const Color(0xFFF0F9FF);
-      case '马': return const Color(0xFFFFFBEB);
-      case '羊': return const Color(0xFFFDF4FF);
-      case '猴': return const Color(0xFFFFF7ED);
-      case '鸡': return const Color(0xFFFFF1F2);
-      case '狗': return const Color(0xFFF0F9FF);
-      case '猪': return const Color(0xFFFFF0F6);
-      default: return const Color(0xFFF3F4F6);
+      case '鼠':
+        return '🐭';
+      case '牛':
+        return '🐮';
+      case '虎':
+        return '🐯';
+      case '兔':
+        return '🐰';
+      case '龙':
+        return '🐲';
+      case '蛇':
+        return '🐍';
+      case '马':
+        return '🐴';
+      case '羊':
+        return '🐑';
+      case '猴':
+        return '🐵';
+      case '鸡':
+        return '🐔';
+      case '狗':
+        return '🐶';
+      case '猪':
+        return '🐷';
+      default:
+        return '✨';
     }
   }
 
@@ -447,147 +416,162 @@ class _BirthdayListTile extends StatelessWidget {
             child: Stack(
               children: [
                 // 左侧渐变竖线（今天过生日才显示）
-                  if (_isToday(row))
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 6,
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Color(0xFFEF4444), Color(0xFFF59E0B)],
-                          ),
-                          borderRadius: BorderRadius.only(
-                            topRight: Radius.circular(6),
-                            bottomRight: Radius.circular(6),
-                          ),
+                if (_isToday(row))
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 6,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFFEF4444), Color(0xFFF59E0B)],
+                        ),
+                        borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(6),
+                          bottomRight: Radius.circular(6),
                         ),
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 头像
-                        _LeadingAvatar(entry: row.entry),
-                        const SizedBox(width: 14),
-                        // 中间信息
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // 第一行：左边 姓名+年龄+生肖，右边 状态标签
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        Text(
-                                          row.entry.name,
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 头像
+                      _LeadingAvatar(entry: row.entry),
+                      const SizedBox(width: 14),
+                      // 中间信息
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 第一行：左边 姓名+年龄+生肖，右边 状态标签
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        row.entry.name,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF1E293B),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      // 生肖徽章（只显示 emoji）
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(0xFFE2E8F0),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _shengXiaoEmoji(shengXiao),
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      // 年龄徽章
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFFBEB),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(0xFFFDE68A),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '$age岁',
                                           style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF1E293B),
+                                            fontSize: 11,
+                                            color: Color(0xFFB45309),
+                                            fontWeight: FontWeight.w500,
                                           ),
                                         ),
-                                        const SizedBox(width: 8),
-                                        // 生肖徽章（只显示 emoji）
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(20),
-                                            border: Border.all(
-                                                color: const Color(0xFFE2E8F0),
-                                                width: 1),
-                                          ),
-                                          child: Text(_shengXiaoEmoji(shengXiao),
-                                              style: const TextStyle(fontSize: 13)),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        // 年龄徽章
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFFFFBEB),
-                                            borderRadius: BorderRadius.circular(20),
-                                            border: Border.all(
-                                                color: const Color(0xFFFDE68A),
-                                                width: 1),
-                                          ),
-                                          child: Text(
-                                            '$age岁',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Color(0xFFB45309),
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
-                                  // 状态标签（今天/还有X天）
-                                  if (_isBirthdayThisMonth(row))
-                                    _DaysBadge(days: row.days, text: row.daysText),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              // 第二行：日历图标 + 公历/农历 · 录入的生日日期
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.calendar_month_outlined,
-                                    size: 14,
-                                    color: Color(0xFF94A3B8),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    row.entry.type == BirthdayType.gregorian
-                                        ? '公历 · ${row.entry.year}年${row.entry.month}月${row.entry.day}日'
-                                        : '农历 · ${row.entry.year}年${lunarMonthNameOf(row.entry.month)}${lunarDayNameOf(row.entry.day)}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              // 第三行：备注（上面有分隔线）
-                              if (hasNote) ...[
-                                const SizedBox(height: 10),
-                                Container(
-                                  height: 1,
-                                  color: const Color(0xFFF1F5F9),
                                 ),
-                                const SizedBox(height: 10),
+                                // 状态标签（今天/还有X天）
+                                if (_isBirthdayThisMonth(row))
+                                  _DaysBadge(
+                                    days: row.days,
+                                    text: row.daysText,
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            // 第二行：日历图标 + 公历/农历 · 录入的生日日期
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.calendar_month_outlined,
+                                  size: 14,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                                const SizedBox(width: 6),
                                 Text(
-                                  row.entry.remark!,
+                                  row.entry.type == BirthdayType.gregorian
+                                      ? '公历 · ${row.entry.year}年${row.entry.month}月${row.entry.day}日'
+                                      : '农历 · ${row.entry.year}年${lunarMonthNameOf(row.entry.month)}${lunarDayNameOf(row.entry.day)}',
                                   style: const TextStyle(
-                                    fontSize: 13,
+                                    fontSize: 12,
                                     color: Color(0xFF64748B),
-                                    height: 1.5,
                                   ),
                                 ),
                               ],
+                            ),
+                            // 第三行：备注（上面有分隔线）
+                            if (hasNote) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                height: 1,
+                                color: const Color(0xFFF1F5F9),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                row.entry.remark!,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF64748B),
+                                  height: 1.5,
+                                ),
+                              ),
                             ],
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
+      ),
     );
   }
 }
@@ -597,19 +581,13 @@ class _DaysBadge extends StatelessWidget {
   final int days;
   final String text;
 
-  const _DaysBadge({
-    required this.days,
-    required this.text,
-  });
+  const _DaysBadge({required this.days, required this.text});
 
   @override
   Widget build(BuildContext context) {
     final isToday = days == 0;
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 5,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: isToday ? const Color(0xFFFEF2F2) : const Color(0xFFEEF2FF),
         borderRadius: BorderRadius.circular(20),
@@ -637,7 +615,9 @@ class _DaysBadge extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: isToday ? const Color(0xFFE11D48) : const Color(0xFF4F46E5),
+              color: isToday
+                  ? const Color(0xFFE11D48)
+                  : const Color(0xFF4F46E5),
             ),
           ),
         ],
@@ -653,12 +633,23 @@ class _LeadingAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = entry.avatarPath;
-    if (p != null && File(p).existsSync()) {
-      return CircleAvatar(
-        radius: 26,
-        backgroundImage: FileImage(File(p)),
+    // 用 Image.file + errorBuilder，而不是 existsSync()：
+    // 列表每次重建都做一次同步文件检测会阻塞主线程，文件丢失时也能自动兜底
+    if (p != null && p.isNotEmpty) {
+      return ClipOval(
+        child: Image.file(
+          File(p),
+          width: 52,
+          height: 52,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _initialAvatar(),
+        ),
       );
     }
+    return _initialAvatar();
+  }
+
+  Widget _initialAvatar() {
     return CircleAvatar(
       radius: 26,
       backgroundColor: AppColors.primaryLight,
@@ -707,111 +698,18 @@ class _EmptyView extends StatelessWidget {
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textBody,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '点击右下角按钮，开始添加第一个生日',
-            style: TextStyle(
-              fontSize: 14,
-              color: AppColors.textPlaceholder,
+            const SizedBox(height: 8),
+            const Text(
+              '点击右下角按钮，开始添加第一个生日',
+              style: TextStyle(fontSize: 14, color: AppColors.textPlaceholder),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
-}
-
-/// 蛋糕图标画笔（简约线条风格）。
-class _CakeIconPainter extends CustomPainter {
-  const _CakeIconPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.trackGray
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-
-    final w = size.width;
-    final h = size.height;
-
-    // 蛋糕底座（椭圆）
-    final baseRect = Rect.fromLTWH(w * 0.15, h * 0.7, w * 0.7, h * 0.15);
-    canvas.drawOval(baseRect, paint);
-
-    // 蛋糕主体（矩形，底部圆角）
-    final bodyPath = Path()
-      ..moveTo(w * 0.2, h * 0.55)
-      ..lineTo(w * 0.2, h * 0.72)
-      ..arcToPoint(
-        Offset(w * 0.25, h * 0.78),
-        radius: const Radius.circular(8),
-      )
-      ..lineTo(w * 0.75, h * 0.78)
-      ..arcToPoint(
-        Offset(w * 0.8, h * 0.72),
-        radius: const Radius.circular(8),
-      )
-      ..lineTo(w * 0.8, h * 0.55)
-      ..close();
-    canvas.drawPath(bodyPath, paint);
-
-    // 蛋糕顶部波浪线（奶油）
-    final creamPath = Path()
-      ..moveTo(w * 0.2, h * 0.55)
-      ..quadraticBezierTo(w * 0.3, h * 0.5, w * 0.4, h * 0.55)
-      ..quadraticBezierTo(w * 0.5, h * 0.6, w * 0.6, h * 0.55)
-      ..quadraticBezierTo(w * 0.7, h * 0.5, w * 0.8, h * 0.55);
-    canvas.drawPath(creamPath, paint);
-
-    // 蜡烛
-    canvas.drawLine(
-      Offset(w * 0.5, h * 0.3),
-      Offset(w * 0.5, h * 0.5),
-      paint,
-    );
-
-    // 火焰
-    final flamePath = Path()
-      ..moveTo(w * 0.5, h * 0.22)
-      ..quadraticBezierTo(w * 0.55, h * 0.26, w * 0.5, h * 0.32)
-      ..quadraticBezierTo(w * 0.45, h * 0.26, w * 0.5, h * 0.22)
-      ..close();
-    canvas.drawPath(flamePath, paint);
-
-    // 装饰小点
-    final dotPaint = Paint()
-      ..color = AppColors.trackGray
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(Offset(w * 0.3, h * 0.65), 2, dotPaint);
-    canvas.drawCircle(Offset(w * 0.7, h * 0.65), 2, dotPaint);
-
-    // 周围装饰小十字/加号
-    _drawPlus(canvas, w * 0.12, h * 0.45, 6, paint);
-    _drawPlus(canvas, w * 0.88, h * 0.4, 6, paint);
-    _drawPlus(canvas, w * 0.15, h * 0.25, 4, paint);
-    _drawPlus(canvas, w * 0.82, h * 0.2, 4, paint);
-  }
-
-  void _drawPlus(Canvas canvas, double cx, double cy, double size, Paint paint) {
-    canvas.drawLine(
-      Offset(cx - size / 2, cy),
-      Offset(cx + size / 2, cy),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(cx, cy - size / 2),
-      Offset(cx, cy + size / 2),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 /// 10秒倒计时组件。
@@ -854,9 +752,7 @@ class _PermissionGuideDialog extends StatelessWidget {
     return Dialog(
       backgroundColor: Colors.white,
       elevation: 8,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 32),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
@@ -886,26 +782,14 @@ class _PermissionGuideDialog extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             // 三个步骤
-            _StepItem(
-              number: 1,
-              text: '关闭「电池优化 / 后台冻结」',
-            ),
+            _StepItem(number: 1, text: '关闭「电池优化 / 后台冻结」'),
             const SizedBox(height: 16),
-            _StepItem(
-              number: 2,
-              text: '允许「自启动 / 后台活动」',
-            ),
+            _StepItem(number: 2, text: '允许「自启动 / 后台活动」'),
             const SizedBox(height: 16),
-            _StepItem(
-              number: 3,
-              text: '授予「精确闹钟」权限',
-            ),
+            _StepItem(number: 3, text: '授予「精确闹钟」权限'),
             const SizedBox(height: 24),
             // 分隔线
-            const Divider(
-              height: 1,
-              color: AppColors.divider,
-            ),
+            const Divider(height: 1, color: AppColors.divider),
             const SizedBox(height: 20),
             // 设置路径
             Row(
@@ -949,10 +833,7 @@ class _PermissionGuideDialog extends StatelessWidget {
                 ),
                 child: const Text(
                   '知道了',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -968,10 +849,7 @@ class _StepItem extends StatelessWidget {
   final int number;
   final String text;
 
-  const _StepItem({
-    required this.number,
-    required this.text,
-  });
+  const _StepItem({required this.number, required this.text});
 
   @override
   Widget build(BuildContext context) {

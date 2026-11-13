@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+
 import '../models/birthday_entry.dart';
 import '../models/birthday_type.dart';
 
@@ -53,7 +54,8 @@ class BirthdayRepository {
   /// 生成一条本地唯一 id（时间戳 + 随机数，无外部依赖）。
   static String generateId() {
     final ts = DateTime.now().microsecondsSinceEpoch;
-    final rand = (DateTime.now().millisecondsSinceEpoch * 2654435761) & 0xffffffff;
+    final rand =
+        (DateTime.now().millisecondsSinceEpoch * 2654435761) & 0xffffffff;
     return '${ts}_$rand';
   }
 }

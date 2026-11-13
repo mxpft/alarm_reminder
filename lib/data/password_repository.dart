@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+
 import '../models/password_entry.dart';
 
 class PasswordRepository {
@@ -22,7 +23,8 @@ class PasswordRepository {
 
   static String generateId() {
     final ts = DateTime.now().microsecondsSinceEpoch;
-    final rand = (DateTime.now().millisecondsSinceEpoch * 2654435761) & 0xffffffff;
+    final rand =
+        (DateTime.now().millisecondsSinceEpoch * 2654435761) & 0xffffffff;
     return '${ts}_$rand';
   }
 }

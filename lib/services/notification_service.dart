@@ -14,11 +14,9 @@ class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
 
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
   final CalendarService _calendar = CalendarService();
-
-  /// 日历同步的最后错误信息（供 UI 显示）。
-  String? get calendarLastError => _calendar.lastError;
 
   static const String _channelId = 'birthday_channel';
   static const String _channelName = '生日提醒';
@@ -30,7 +28,9 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -52,7 +52,8 @@ class NotificationService {
 
     final android = _plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     if (android != null) {
       final notif = await android.requestNotificationsPermission();
       ok = ok && (notif ?? true);
@@ -78,12 +79,7 @@ class NotificationService {
       iOS: DarwinNotificationDetails(),
     );
 
-    await _plugin.show(
-      9999,
-      '生日提醒测试',
-      '通知功能正常！这条是立即测试消息。',
-      details,
-    );
+    await _plugin.show(9999, '生日提醒测试', '通知功能正常！这条是立即测试消息。', details);
   }
 
   /// 排10秒后的定时通知（用 AlarmManager）。
@@ -119,7 +115,10 @@ class NotificationService {
       // 同步日历：如果还没有日历事件，且权限没有被拒绝，创建一个
       if (entry.calendarEventId == null && !calendarPermissionDenied) {
         final occurrence = BirthdayCalculator.nextOccurrence(entry, today);
-        final eventId = await _calendar.createBirthdayEvent(entry, occurrence.date);
+        final eventId = await _calendar.createBirthdayEvent(
+          entry,
+          occurrence.date,
+        );
         if (eventId != null) {
           entry.calendarEventId = eventId;
           await repo.save(entry);
@@ -190,28 +189,8 @@ class NotificationService {
     await _calendar.deleteBirthdayEvent(entry.calendarEventId);
   }
 
-  /// 修改生日后：刷新闹钟 + 刷新日历事件（删旧+建新）。
-  Future<void> refreshAfterEdit(BirthdayEntry entry, DateTime now) async {
-    // 先取消旧闹钟
-    await AndroidAlarmManager.cancel(_notifyId(entry, 0));
-    await AndroidAlarmManager.cancel(_notifyId(entry, 1));
-
-    // 重新调度闹钟
-    final today = DateTime(now.year, now.month, now.day);
-    await _scheduleOne(entry, today);
-
-    // 刷新日历事件：删旧 + 建新
-    final newEventId = await _calendar.refreshBirthdayEvent(entry, today);
-    if (newEventId != null) {
-      entry.calendarEventId = newEventId;
-    }
-  }
-
   /// 生成稳定的闹钟 ID。
-  int _notifyId(BirthdayEntry entry, int slot) {
-    final base = 5000 + (entry.id.hashCode & 0x3fffffff);
-    return base + slot;
-  }
+  int _notifyId(BirthdayEntry entry, int slot) => _alarmIdForEntry(entry, slot);
 }
 
 /// 闹钟回调函数（必须是顶层函数 + @pragma）。
@@ -230,7 +209,8 @@ Future<void> alarmCallback(int id) async {
   // 必须先创建通知通道，否则通知不显示
   final androidPlugin = plugin
       .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
+        AndroidFlutterLocalNotificationsPlugin
+      >();
   if (androidPlugin != null) {
     await androidPlugin.createNotificationChannel(
       const AndroidNotificationChannel(
@@ -271,9 +251,7 @@ Future<void> alarmCallback(int id) async {
       if (!Hive.isAdapterRegistered(0)) {
         Hive.registerAdapter(BirthdayEntryAdapter());
       }
-      final box = await Hive.openBox<BirthdayEntry>(
-        BirthdayRepository.boxName,
-      );
+      final box = await Hive.openBox<BirthdayEntry>(BirthdayRepository.boxName);
 
       BirthdayEntry? matched;
       var isEarlyReminder = false;

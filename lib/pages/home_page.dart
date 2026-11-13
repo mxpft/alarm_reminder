@@ -3,24 +3,27 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../pages/birthday_list_page.dart';
 import '../pages/password_list_page.dart';
+import '../pages/diary_list_page.dart';
 import '../theme/app_colors.dart';
 import '../data/birthday_repository.dart';
+import '../data/diary_repository.dart';
 import '../data/password_repository.dart';
 import '../services/notification_service.dart';
 import '../services/birthday_calculator.dart';
-import '../models/birthday_entry.dart';
 
 /// 应用主页（功能入口卡片）。
 class HomePage extends StatefulWidget {
   final BirthdayRepository repo;
   final NotificationService notification;
   final PasswordRepository passwordRepo;
+  final DiaryRepository diaryRepo;
 
   const HomePage({
     super.key,
     required this.repo,
     required this.notification,
     required this.passwordRepo,
+    required this.diaryRepo,
   });
 
   @override
@@ -128,10 +131,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 6),
               Text(
                 '不错过重要的日子，不遗失值得珍藏的记忆',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -161,7 +161,10 @@ class _HomePageState extends State<HomePage> {
       onTap: () {
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => BirthdayListPage(repo: widget.repo, notification: widget.notification),
+            builder: (_) => BirthdayListPage(
+              repo: widget.repo,
+              notification: widget.notification,
+            ),
           ),
         );
       },
@@ -216,7 +219,10 @@ class _HomePageState extends State<HomePage> {
                           if (_hasBirthdayToday) ...[
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.pinkLight,
                                 borderRadius: BorderRadius.circular(20),
@@ -235,7 +241,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '记录亲友生辰、公农历与生肖提醒',
+                        '记录亲友生辰与生肖',
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.textSecondary,
@@ -313,7 +319,7 @@ class _HomePageState extends State<HomePage> {
                     valueListenable: widget.passwordRepo.box.listenable(),
                     builder: (context, box, _) {
                       return Text(
-                        '已安全托管 ${widget.passwordRepo.count} 个账号密码',
+                        '已托管 ${widget.passwordRepo.count} 个账号密码',
                         style: TextStyle(
                           fontSize: 13,
                           color: AppColors.textSecondary,
@@ -338,25 +344,25 @@ class _HomePageState extends State<HomePage> {
   Widget _buildDiaryCard(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('功能暂未开通')),
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DiaryListPage(repo: widget.diaryRepo),
+          ),
         );
       },
-      child: Opacity(
-        opacity: 0.5,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
         child: Row(
           children: [
             // 图标
@@ -403,7 +409,6 @@ class _HomePageState extends State<HomePage> {
               size: 20,
             ),
           ],
-        ),
         ),
       ),
     );

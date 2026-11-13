@@ -9,7 +9,7 @@
 
 ## 一、产品概述
 
-LittleButler 是一款本地优先的个人记忆助手 App，集成生日提醒、密码管理两大核心功能。所有数据只存在本机，不上云、无后端。
+LittleButler 是一款本地优先的个人记忆助手 App，集成生日提醒、密码管理、一句话日记三大功能模块。所有数据只存在本机，不上云、无后端。
 
 **技术栈：** Flutter 3.47.8 / Hive 本地数据库 / flutter_local_notifications / android_alarm_manager_plus / device_calendar_plus / lunar 农历转换
 
@@ -29,9 +29,9 @@ LittleButler 是一款本地优先的个人记忆助手 App，集成生日提醒
 
 | 卡片 | 图标 | 副标题 | 点击行为 |
 |------|------|--------|----------|
-| 生日提醒 | cake_rounded（蓝色底#D8E2FF） | 记录亲友生辰、公农历与生肖提醒 | 进入生日提醒页 |
-| 密码管理 | lock_rounded（蓝色底#D8E2FF） | 已安全托管 X 个账号密码（实时更新） | 进入密码管理页 |
-| 一句话日记 | edit_note_rounded（紫色底#E3DFFF） | 来说说今天发生了什么 | 提示"功能暂未开通" |
+| 生日提醒 | cake_rounded（蓝色底#D8E2FF） | 记录亲友生辰与生肖 | 进入生日提醒页 |
+| 密码管理 | lock_rounded（蓝色底#D8E2FF） | 已托管 X 个账号密码（实时更新） | 进入密码管理页 |
+| 一句话日记 | edit_note_rounded（紫色底#E3DFFF） | 来说说今天发生了什么 | 进入一句话日记页 |
 
 **生日提醒卡片"今天"tag：**
 - 实时计算今天是否有人过生日

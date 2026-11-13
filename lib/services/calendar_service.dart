@@ -2,14 +2,13 @@ import 'package:device_calendar_plus/device_calendar_plus.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/birthday_entry.dart';
-import 'birthday_calculator.dart';
 
 /// 日历同步服务：把生日写入系统日历，杀后台也能提醒。
 ///
 /// 规则：
 /// - 新增生日 → 创建单次日历事件
 /// - 删除生日 → 删除对应日历事件
-/// - 修改生日 → 删除旧日历事件 + 新建日历事件
+/// - 修改生日 → 删除旧日历事件 + 新建日历事件（由页面先 cancelForEntry 再全量重排）
 class CalendarService {
   final DeviceCalendar _plugin = DeviceCalendar();
   String? lastError;
@@ -103,24 +102,5 @@ class CalendarService {
       // 事件可能已经被用户手动删了，忽略错误
       debugPrint('删除日历事件失败（可能已被用户删除）：$e');
     }
-  }
-
-  /// 刷新一条生日的日历事件：删旧 + 建新。
-  Future<String?> refreshBirthdayEvent(
-    BirthdayEntry entry,
-    DateTime today,
-  ) async {
-    // 先删旧的
-    if (entry.calendarEventId != null) {
-      await deleteBirthdayEvent(entry.calendarEventId);
-    }
-
-    // 算下一次生日日期
-    final occurrence = BirthdayCalculator.nextOccurrence(entry, today);
-    final nextDate = occurrence.date;
-
-    // 创建新的
-    final newEventId = await createBirthdayEvent(entry, nextDate);
-    return newEventId;
   }
 }

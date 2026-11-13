@@ -1,5 +1,5 @@
-// import 'package:lunar_flutter/lunar.dart';
 import 'package:lunar/lunar.dart';
+
 import '../models/birthday_entry.dart';
 import '../models/birthday_type.dart';
 
@@ -25,7 +25,10 @@ class BirthdayOccurrence {
 /// 重要：**不做一次性转公历写死**，每次调用都基于【原始农历年月日 + 闰月标记】动态换算。
 class BirthdayCalculator {
   /// 求某条生日「距离今天最近」的一次公历日期（总是 >= 今天）。
-  static BirthdayOccurrence nextOccurrence(BirthdayEntry entry, DateTime today) {
+  static BirthdayOccurrence nextOccurrence(
+    BirthdayEntry entry,
+    DateTime today,
+  ) {
     final todayOnly = DateTime(today.year, today.month, today.day);
 
     if (entry.type == BirthdayType.gregorian) {
@@ -113,13 +116,18 @@ class BirthdayCalculator {
 
   /// 计算「距离下一次生日」的剩余天数（今天生日为 0）。
   static int daysUntil(DateTime occurrenceDate, DateTime today) {
-    final a = DateTime(occurrenceDate.year, occurrenceDate.month, occurrenceDate.day);
+    final a = DateTime(
+      occurrenceDate.year,
+      occurrenceDate.month,
+      occurrenceDate.day,
+    );
     final b = DateTime(today.year, today.month, today.day);
     return a.difference(b).inDays;
   }
 
   /// 公历某月最后一天（2 月会正确处理平/闰年）。
-  static int _lastDayOfMonth(int year, int month) => DateTime(year, month + 1, 0).day;
+  static int _lastDayOfMonth(int year, int month) =>
+      DateTime(year, month + 1, 0).day;
 
   /// 把 day 限制在当月有效范围内（例如非闰年 2 月没有 29 日 → 落到 28 日）。
   static int _clampDayToMonth(int year, int month, int day) {
@@ -138,17 +146,32 @@ class BirthdayCalculator {
   /// 取这条生日的生肖（按出生农历年，春节附近也基本准确）。
   static String shengXiaoOf(BirthdayEntry entry) {
     if (entry.type == BirthdayType.lunar) {
-      return Lunar.fromYmd(entry.year, entry.month, entry.day)
-          .getYearShengXiao();
+      return Lunar.fromYmd(
+        entry.year,
+        entry.month,
+        entry.day,
+      ).getYearShengXiao();
     }
-    return Solar.fromYmd(entry.year, entry.month, entry.day)
-        .getLunar()
-        .getYearShengXiao();
+    return Solar.fromYmd(
+      entry.year,
+      entry.month,
+      entry.day,
+    ).getLunar().getYearShengXiao();
   }
 
-  /// 计算周岁：当前年份 - 出生年份。
+  /// 计算周岁：满岁要以「今年这次生日过没过」为准，
+  /// 只按年份相减会让生日还没到的人凭空多一岁。
   static int ageOf(BirthdayEntry entry, DateTime today) {
-    final age = today.year - entry.year;
-    return age < 0 ? 0 : age;
+    final raw = today.year - entry.year;
+    if (raw <= 0) return 0;
+    final occ = nextOccurrence(entry, today);
+    // 下一次生日已经跨到明年 → 今年这次已经过了，周岁就是年份差
+    if (!occ.isThisYear) return raw;
+    final isTodayBirthday =
+        occ.date.year == today.year &&
+        occ.date.month == today.month &&
+        occ.date.day == today.day;
+    // 今天正好生日算满岁；否则今年还没过生日，减一岁
+    return isTodayBirthday ? raw : (raw - 1).clamp(0, raw);
   }
 }

@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'data/birthday_repository.dart';
+import 'data/diary_repository.dart';
 import 'data/password_repository.dart';
 import 'models/birthday_entry_adapter.dart';
+import 'models/diary_entry_adapter.dart';
 import 'models/password_entry_adapter.dart';
-import 'pages/birthday_list_page.dart';
 import 'pages/home_page.dart';
 import 'services/notification_service.dart';
 import 'theme/app_colors.dart';
@@ -22,10 +23,13 @@ Future<void> main() async {
     await Hive.initFlutter();
     Hive.registerAdapter(BirthdayEntryAdapter());
     Hive.registerAdapter(PasswordEntryAdapter());
+    Hive.registerAdapter(DiaryEntryAdapter());
     final repo = BirthdayRepository();
     await repo.open();
     final passwordRepo = PasswordRepository();
     await passwordRepo.open();
+    final diaryRepo = DiaryRepository();
+    await diaryRepo.open();
 
     // —— 精确闹钟初始化 ——
     await AndroidAlarmManager.initialize();
@@ -39,7 +43,14 @@ Future<void> main() async {
       debugPrint('初始化通知服务失败: $e');
     }
 
-    runApp(BirthdayApp(repo: repo, notification: notification, passwordRepo: passwordRepo));
+    runApp(
+      BirthdayApp(
+        repo: repo,
+        notification: notification,
+        passwordRepo: passwordRepo,
+        diaryRepo: diaryRepo,
+      ),
+    );
   } catch (e, st) {
     // 任何初始化错误都不会再静默白屏，直接在屏幕上显示出来。
     debugPrint('初始化失败: $e\n$st');
@@ -51,12 +62,14 @@ class BirthdayApp extends StatelessWidget {
   final BirthdayRepository repo;
   final NotificationService notification;
   final PasswordRepository passwordRepo;
+  final DiaryRepository diaryRepo;
 
   const BirthdayApp({
     super.key,
     required this.repo,
     required this.notification,
     required this.passwordRepo,
+    required this.diaryRepo,
   });
 
   @override
@@ -65,7 +78,12 @@ class BirthdayApp extends StatelessWidget {
       title: 'LittleButler',
       debugShowCheckedModeBanner: false,
       theme: _buildAppTheme(),
-      home: HomePage(repo: repo, notification: notification, passwordRepo: passwordRepo),
+      home: HomePage(
+        repo: repo,
+        notification: notification,
+        passwordRepo: passwordRepo,
+        diaryRepo: diaryRepo,
+      ),
     );
   }
 
@@ -97,9 +115,7 @@ class BirthdayApp extends StatelessWidget {
       dialogTheme: DialogThemeData(
         backgroundColor: Colors.white,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
       // 按钮主题
       filledButtonTheme: FilledButtonThemeData(
@@ -107,30 +123,18 @@ class BirthdayApp extends StatelessWidget {
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           elevation: 0,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 14,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
-          textStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.primary,
-          padding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 10,
-          ),
-          textStyle: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
         ),
       ),
       // 输入框主题
@@ -155,10 +159,7 @@ class BirthdayApp extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: AppColors.primary,
-            width: 1.5,
-          ),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
       ),
       // 分割线主题
@@ -169,12 +170,7 @@ class BirthdayApp extends StatelessWidget {
       ),
       // 开关主题
       switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return Colors.white;
-          }
-          return Colors.white;
-        }),
+        thumbColor: WidgetStateProperty.all(Colors.white),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return AppColors.primary;

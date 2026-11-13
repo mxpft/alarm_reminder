@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -11,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import '../data/birthday_repository.dart';
 import '../models/birthday_entry.dart';
 import '../models/birthday_type.dart';
+import '../services/image_compress_service.dart';
 import '../theme/app_colors.dart';
 import 'custom_date_picker.dart';
 import 'custom_time_picker.dart';
@@ -18,6 +20,12 @@ import 'lunar_date_picker.dart';
 
 /// 新增 / 编辑生日页面。
 class BirthdayEditDialog extends StatefulWidget {
+  /// 头像长边上限：头像最大显示约 96dp，512 已足够清晰
+  static const int avatarMaxDimension = 512;
+
+  /// 头像 JPEG 质量
+  static const int avatarJpegQuality = 80;
+
   final BirthdayEntry? existing;
 
   const BirthdayEditDialog({super.key, this.existing});
@@ -38,6 +46,12 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
 
   String? _avatarPath;
   final _picker = ImagePicker();
+
+  /// 打开页面时已有的头像（取消编辑时不能误删）
+  String? _initialAvatarPath;
+
+  /// 是否点了「保存」把结果交出去；没交出去时本次新裁的头像要清理
+  bool _submitted = false;
 
   late int _gYear, _gMonth, _gDay;
   late int _lYear, _lMonth, _lDay;
@@ -72,6 +86,7 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
     _remindMinute = e?.remindMinute ?? 0;
     _notify3DaysBefore = e?.notify3DaysBefore ?? false;
     _avatarPath = e?.avatarPath;
+    _initialAvatarPath = e?.avatarPath;
 
     // 页面打开后主动收起键盘，避免自动弹出
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,6 +98,14 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
 
   @override
   void dispose() {
+    // 没保存就退出：本次新裁的头像没人接手，删掉避免成为孤儿文件
+    final path = _avatarPath;
+    if (!_submitted &&
+        path != null &&
+        path.isNotEmpty &&
+        path != _initialAvatarPath) {
+      unawaited(_deleteFileQuietly(path));
+    }
     _nameCtrl.dispose();
     _remarkCtrl.dispose();
     super.dispose();
@@ -154,12 +177,12 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
 
   // ========== 头像 ==========
   Widget _buildAvatarField() {
-    final hasAvatar = _avatarPath != null && File(_avatarPath!).existsSync();
+    final path = _avatarPath;
+    final hasAvatar = path != null && path.isNotEmpty;
     return GestureDetector(
       onTap: _pickAvatar,
-      onLongPress: hasAvatar
-          ? () => setState(() => _avatarPath = null)
-          : null,
+      // 长按清空头像；文件读不到时同样按「无头像」处理
+      onLongPress: hasAvatar ? () => setState(() => _avatarPath = null) : null,
       child: Container(
         width: 110,
         height: 110,
@@ -170,8 +193,13 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
         child: hasAvatar
             ? ClipOval(
                 child: Image.file(
-                  File(_avatarPath!),
+                  File(path),
                   fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const Icon(
+                    Icons.add_a_photo,
+                    size: 40,
+                    color: AppColors.textPlaceholder,
+                  ),
                 ),
               )
             : const Icon(
@@ -217,9 +245,7 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -227,10 +253,7 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
               padding: EdgeInsets.all(16),
               child: Text(
                 '裁剪头像',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
             ),
             SizedBox(
@@ -278,12 +301,24 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
       if (!await avatarDir.exists()) {
         await avatarDir.create(recursive: true);
       }
-      final avatarFile = File(
-        '${avatarDir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      // 裁剪结果是内存字节，先压缩再落盘（头像最大显示不到 100dp，512 足够）
+      Uint8List bytes = result!;
+      try {
+        bytes = await ImageCompressService.compressBytes(
+          bytes,
+          maxDimension: BirthdayEditDialog.avatarMaxDimension,
+          quality: BirthdayEditDialog.avatarJpegQuality,
+        );
+      } catch (e) {
+        debugPrint('头像压缩失败，保留裁剪原图: $e');
+      }
+      final avatarFile = await ImageCompressService.writeBytes(
+        bytes,
+        dir: avatarDir,
+        prefix: 'avatar_',
       );
-      await avatarFile.writeAsBytes(result!);
-      debugPrint('头像已保存到: ${avatarFile.path}');
-      return avatarFile.path;
+      debugPrint('头像已保存到: $avatarFile');
+      return avatarFile;
     } catch (e) {
       debugPrint('头像保存失败: $e');
       return null;
@@ -294,26 +329,17 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
   Widget _buildNameField() {
     return TextFormField(
       controller: _nameCtrl,
-      style: const TextStyle(
-        fontSize: 16,
-        color: AppColors.textPrimary,
-      ),
+      style: const TextStyle(fontSize: 16, color: AppColors.textPrimary),
       decoration: _inputDecoration('请输入姓名'),
-      validator: (v) =>
-          (v == null || v.trim().isEmpty) ? '请输入姓名' : null,
+      validator: (v) => (v == null || v.trim().isEmpty) ? '请输入姓名' : null,
     );
   }
 
   Widget _buildRemarkField() {
     return TextFormField(
       controller: _remarkCtrl,
-      style: const TextStyle(
-        fontSize: 16,
-        color: AppColors.textPrimary,
-      ),
-      decoration: _inputDecoration('请输入备注（选填）').copyWith(
-        counterText: '',
-      ),
+      style: const TextStyle(fontSize: 16, color: AppColors.textPrimary),
+      decoration: _inputDecoration('请输入备注（选填）').copyWith(counterText: ''),
       maxLines: 3,
       minLines: 2,
       maxLength: 200,
@@ -329,10 +355,7 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
       ),
       filled: true,
       fillColor: AppColors.bgCard,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 16,
-      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
@@ -343,17 +366,11 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
-          color: AppColors.primary,
-          width: 1.5,
-        ),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
-          color: Colors.red,
-          width: 1,
-        ),
+        borderSide: const BorderSide(color: Colors.red, width: 1),
       ),
     );
   }
@@ -454,16 +471,13 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
     final text = _type == BirthdayType.gregorian
         ? '$_gYear 年 $_gMonth 月 $_gDay 日'
         : '$_lYear 年 ${_lLeap ? '闰' : ''}${lunarMonthNameOf(_lMonth)}'
-            '${lunarDayNameOf(_lDay)}';
+              '${lunarDayNameOf(_lDay)}';
 
     return InkWell(
       onTap: _pickDate,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
           color: AppColors.bgCard,
           borderRadius: BorderRadius.circular(12),
@@ -482,16 +496,10 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
             Expanded(
               child: Text(
                 text,
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: AppColors.textBody,
-                ),
+                style: const TextStyle(fontSize: 16, color: AppColors.textBody),
               ),
             ),
-            const Icon(
-              Icons.arrow_drop_down,
-              color: AppColors.iconGray,
-            ),
+            const Icon(Icons.arrow_drop_down, color: AppColors.iconGray),
           ],
         ),
       ),
@@ -521,21 +529,14 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
   }
 
   Future<void> _pickLunarDate() async {
-    var selection = LunarSelection(
-      _lYear,
-      _lMonth,
-      _lDay,
-      isLeap: _lLeap,
-    );
+    var selection = LunarSelection(_lYear, _lMonth, _lDay, isLeap: _lLeap);
     final picked = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (ctx) => Dialog(
         backgroundColor: Colors.white,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         insetPadding: const EdgeInsets.symmetric(horizontal: 24),
         child: StatefulBuilder(
           builder: (ctx, setDialogState) => Padding(
@@ -642,10 +643,7 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
       onTap: _pickRemindTime,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
           color: AppColors.bgCard,
           borderRadius: BorderRadius.circular(12),
@@ -662,16 +660,10 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
             Expanded(
               child: Text(
                 '$hh:$mm',
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: AppColors.textBody,
-                ),
+                style: const TextStyle(fontSize: 16, color: AppColors.textBody),
               ),
             ),
-            const Icon(
-              Icons.arrow_drop_down,
-              color: AppColors.iconGray,
-            ),
+            const Icon(Icons.arrow_drop_down, color: AppColors.iconGray),
           ],
         ),
       ),
@@ -693,57 +685,12 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
     _dismissKeyboard();
   }
 
-  // ========== 提前3天开关 ==========
-  Widget _buildRemind3DaysSwitch() {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '提前 3 天也提醒',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textBody,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                '生日前 3 天的同一时间再提醒一次',
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.5,
-                  color: AppColors.textPlaceholder,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Switch(
-          value: _notify3DaysBefore,
-          onChanged: (v) => setState(() => _notify3DaysBefore = v),
-          activeThumbColor: Colors.white,
-          activeTrackColor: AppColors.primary,
-          inactiveThumbColor: Colors.white,
-          inactiveTrackColor: AppColors.trackGray,
-        ),
-      ],
-    );
-  }
-
   // ========== 底部按钮 ==========
   Widget _buildBottomBar() {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(
-            color: AppColors.bgLight,
-            width: 1,
-          ),
-        ),
+        border: Border(top: BorderSide(color: AppColors.bgLight, width: 1)),
       ),
       padding: EdgeInsets.fromLTRB(
         20,
@@ -765,10 +712,7 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
               ),
               child: const Text(
                 '取消',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: AppColors.textSecondary,
-                ),
+                style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
               ),
             ),
           ),
@@ -785,10 +729,7 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
               ),
               child: const Text(
                 '保存',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -801,8 +742,24 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    _submitted = true;
     final entry = _buildEntry();
+    // 换了头像或清掉了头像：旧文件没人引用了，后台删掉，避免越攒越多
+    final oldAvatar = widget.existing?.avatarPath;
+    if (oldAvatar != null && oldAvatar.isNotEmpty && oldAvatar != _avatarPath) {
+      unawaited(_deleteFileQuietly(oldAvatar));
+    }
     Navigator.of(context).pop(entry);
+  }
+
+  /// 静默删除本地文件（失败不影响保存结果）
+  Future<void> _deleteFileQuietly(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (e) {
+      debugPrint('清理旧头像失败: $e');
+    }
   }
 
   BirthdayEntry _buildEntry() {
@@ -831,10 +788,7 @@ class _FieldLabel extends StatelessWidget {
   final String text;
   final bool required;
 
-  const _FieldLabel({
-    required this.text,
-    this.required = false,
-  });
+  const _FieldLabel({required this.text, this.required = false});
 
   @override
   Widget build(BuildContext context) {

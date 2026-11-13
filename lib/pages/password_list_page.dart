@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -60,8 +62,15 @@ class _PasswordListPageState extends State<PasswordListPage> {
                       onChanged: (v) => setState(() => _searchQuery = v),
                       decoration: const InputDecoration(
                         hintText: '搜索应用、网站或用户名...',
-                        hintStyle: TextStyle(fontSize: 14, color: AppColors.textPlaceholder),
-                        prefixIcon: Icon(Icons.search, size: 20, color: AppColors.textPlaceholder),
+                        hintStyle: TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textPlaceholder,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          size: 20,
+                          color: AppColors.textPlaceholder,
+                        ),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -81,7 +90,11 @@ class _PasswordListPageState extends State<PasswordListPage> {
                   final all = widget.repo.getAll();
                   final filtered = _filterEntries(all);
                   if (filtered.isEmpty) {
-                    return _buildEmptyView();
+                    // 有记录但搜不到：给搜索专用的空态，
+                    // 别把「密码库还是空的」抛给正在搜索的人
+                    return all.isEmpty
+                        ? _buildEmptyView()
+                        : _buildNoResultView();
                   }
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -181,7 +194,9 @@ class _PasswordListPageState extends State<PasswordListPage> {
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -294,6 +309,30 @@ class _PasswordListPageState extends State<PasswordListPage> {
     );
   }
 
+  /// 搜索无匹配时的空态（区别于「一条都没有」）
+  Widget _buildNoResultView() {
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.4,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.search_off, size: 40, color: AppColors.textPlaceholder),
+            const SizedBox(height: 12),
+            const Text(
+              '没有找到匹配的记录',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _openEditor(PasswordEntry? entry) async {
     final result = await showModalBottomSheet<PasswordEntry?>(
       context: context,
@@ -304,9 +343,8 @@ class _PasswordListPageState extends State<PasswordListPage> {
     if (result != null) {
       await widget.repo.save(result);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('保存成功')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('保存成功')));
       }
     }
   }
@@ -318,9 +356,7 @@ class _PasswordListPageState extends State<PasswordListPage> {
       builder: (ctx) => Dialog(
         backgroundColor: Colors.white,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 28, 24, 16),
           child: Column(
@@ -364,9 +400,8 @@ class _PasswordListPageState extends State<PasswordListPage> {
     if (ok == true) {
       await widget.repo.delete(entry.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('删除成功')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('删除成功')));
       }
     }
   }
@@ -386,9 +421,8 @@ class _PasswordCard extends StatelessWidget {
 
   void _copy(BuildContext context, String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label复制成功')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('$label复制成功')));
   }
 
   @override
@@ -456,7 +490,11 @@ class _PasswordCard extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.content_copy, size: 18, color: AppColors.primary),
+                    icon: const Icon(
+                      Icons.content_copy,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
                     onPressed: () => _copy(context, entry.username, '账号'),
                   ),
                 ],
@@ -498,7 +536,11 @@ class _PasswordCard extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.content_copy, size: 18, color: AppColors.primary),
+                    icon: const Icon(
+                      Icons.content_copy,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
                     onPressed: () => _copy(context, entry.password, '密码'),
                   ),
                 ],
@@ -507,10 +549,7 @@ class _PasswordCard extends StatelessWidget {
             // 备注信息（上面有分隔线）
             if (entry.note != null && entry.note!.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Container(
-                height: 1,
-                color: const Color(0xFFF1F5F9),
-              ),
+              Container(height: 1, color: const Color(0xFFF1F5F9)),
               const SizedBox(height: 12),
               Text(
                 entry.note!,
@@ -580,28 +619,28 @@ class _PasswordEditSheetState extends State<_PasswordEditSheet> {
     const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const digits = '0123456789';
     const special = '!@#\$%^&*()_+-=[]{}|;:,.<>?';
-    final all = lower + upper + digits + special;
-    final rng = DateTime.now().microsecondsSinceEpoch;
-    final rand = rng ^ (rng >> 16);
+    const all = lower + upper + digits + special;
 
-    String pick(String chars, int seed) {
-      return chars[seed % chars.length];
-    }
-
-    // 确保包含大小写、数字、特殊字符
+    // 用安全随机源：原先按时间戳 + 位运算取模，字符池长度 87 不是 2 的幂，
+    // 生成的密码分布很偏、而且可预测
+    final rnd = Random.secure();
     final chars = <String>[
-      pick(lower, rand),
-      pick(upper, rand >> 1),
-      pick(digits, rand >> 2),
-      pick(special, rand >> 3),
+      // 先各放一个，保证大小写、数字、符号齐全
+      lower[rnd.nextInt(lower.length)],
+      upper[rnd.nextInt(upper.length)],
+      digits[rnd.nextInt(digits.length)],
+      special[rnd.nextInt(special.length)],
     ];
-    // 剩余4位随机填充
     for (var i = 4; i < 8; i++) {
-      final idx = (rand >> i) & (all.length - 1);
-      chars.add(all[idx]);
+      chars.add(all[rnd.nextInt(all.length)]);
     }
-    // 打乱顺序
-    chars.shuffle();
+    // Fisher-Yates 洗牌，打散固定顺序
+    for (var i = chars.length - 1; i > 0; i--) {
+      final j = rnd.nextInt(i + 1);
+      final tmp = chars[i];
+      chars[i] = chars[j];
+      chars[j] = tmp;
+    }
     _passwordCtrl.text = chars.join();
   }
 
@@ -634,7 +673,14 @@ class _PasswordEditSheetState extends State<_PasswordEditSheet> {
               ),
               const SizedBox(height: 20),
               // 平台名称
-              const Text('平台或网站名称', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              const Text(
+                '平台或网站名称',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
               const SizedBox(height: 4),
               TextFormField(
                 controller: _titleCtrl,
@@ -643,18 +689,31 @@ class _PasswordEditSheetState extends State<_PasswordEditSheet> {
                   prefixIcon: const Icon(Icons.language, size: 18),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
                   ),
                 ),
                 validator: (v) => v!.trim().isEmpty ? '请输入应用名称' : null,
               ),
               const SizedBox(height: 16),
               // 账号
-              const Text('账号或邮箱', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              const Text(
+                '账号或邮箱',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
               const SizedBox(height: 4),
               TextFormField(
                 controller: _usernameCtrl,
@@ -663,18 +722,31 @@ class _PasswordEditSheetState extends State<_PasswordEditSheet> {
                   prefixIcon: const Icon(Icons.person, size: 18),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
                   ),
                 ),
                 validator: (v) => v!.trim().isEmpty ? '请输入账号' : null,
               ),
               const SizedBox(height: 16),
               // 密码
-              const Text('安全密码', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              const Text(
+                '安全密码',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
               const SizedBox(height: 4),
               TextFormField(
                 controller: _passwordCtrl,
@@ -682,24 +754,41 @@ class _PasswordEditSheetState extends State<_PasswordEditSheet> {
                   hintText: '输入密码',
                   prefixIcon: const Icon(Icons.key, size: 18),
                   suffixIcon: IconButton(
-                    icon: const Icon(Icons.auto_fix_high, size: 20, color: AppColors.primary),
+                    icon: const Icon(
+                      Icons.auto_fix_high,
+                      size: 20,
+                      color: AppColors.primary,
+                    ),
                     onPressed: _generatePassword,
                     tooltip: '随机生成密码',
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
                   ),
                 ),
                 validator: (v) => v!.isEmpty ? '请输入密码' : null,
               ),
               const SizedBox(height: 16),
               // 备注
-              const Text('备注信息（可选）', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+              const Text(
+                '备注信息（可选）',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
               const SizedBox(height: 4),
               TextFormField(
                 controller: _noteCtrl,
@@ -707,11 +796,17 @@ class _PasswordEditSheetState extends State<_PasswordEditSheet> {
                   hintText: '如：备用验证码、绑定的二次验证',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
                   ),
                 ),
               ),
@@ -724,7 +819,10 @@ class _PasswordEditSheetState extends State<_PasswordEditSheet> {
                       onPressed: () => Navigator.of(context).pop(),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                        side: const BorderSide(
+                          color: Color(0xFFE2E8F0),
+                          width: 1,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

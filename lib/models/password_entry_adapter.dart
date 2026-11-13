@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+
 import 'password_entry.dart';
 
 class PasswordEntryAdapter extends TypeAdapter<PasswordEntry> {

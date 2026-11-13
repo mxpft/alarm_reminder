@@ -144,9 +144,25 @@ class _LunarDatePickerState extends State<LunarDatePicker> {
           // 三列滚轮
           Row(
             children: [
-              Expanded(child: _wheel(_yearCtrl, _years, _onYearChange, _selectedYearIndex)),
-              Expanded(child: _wheel(_monthCtrl, _months, _onMonthChange, _selectedMonthIndex)),
-              Expanded(child: _wheel(_dayCtrl, days, _onDayChange, _selectedDayIndex)),
+              Expanded(
+                child: _wheel(
+                  _yearCtrl,
+                  _years,
+                  _onYearChange,
+                  _selectedYearIndex,
+                ),
+              ),
+              Expanded(
+                child: _wheel(
+                  _monthCtrl,
+                  _months,
+                  _onMonthChange,
+                  _selectedMonthIndex,
+                ),
+              ),
+              Expanded(
+                child: _wheel(_dayCtrl, days, _onDayChange, _selectedDayIndex),
+              ),
             ],
           ),
         ],
@@ -282,8 +298,7 @@ class _LunarMonthOption {
   final bool isLeap;
   _LunarMonthOption(this.year, this.month, this.isLeap);
 
-  String get label =>
-      '${isLeap ? '闰' : ''}${lunarMonthNameOf(month)}';
+  String get label => '${isLeap ? '闰' : ''}${lunarMonthNameOf(month)}';
 
   @override
   String toString() => label;

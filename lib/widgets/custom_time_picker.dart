@@ -8,10 +8,7 @@ import '../theme/app_colors.dart';
 class CustomTimePicker extends StatefulWidget {
   final TimeOfDay initialTime;
 
-  const CustomTimePicker({
-    super.key,
-    required this.initialTime,
-  });
+  const CustomTimePicker({super.key, required this.initialTime});
 
   /// 便捷方法：弹出时间选择器。
   static Future<TimeOfDay?> show(
@@ -36,8 +33,12 @@ class _CustomTimePickerState extends State<CustomTimePicker> {
   @override
   void initState() {
     super.initState();
-    _hourController = FixedExtentScrollController(initialItem: widget.initialTime.hour);
-    _minuteController = FixedExtentScrollController(initialItem: widget.initialTime.minute);
+    _hourController = FixedExtentScrollController(
+      initialItem: widget.initialTime.hour,
+    );
+    _minuteController = FixedExtentScrollController(
+      initialItem: widget.initialTime.minute,
+    );
   }
 
   @override
@@ -58,9 +59,7 @@ class _CustomTimePickerState extends State<CustomTimePicker> {
     return Dialog(
       backgroundColor: Colors.white,
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 28),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
@@ -177,10 +176,7 @@ class _CustomTimePickerState extends State<CustomTimePicker> {
                   ),
                   child: const Text(
                     '确定',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
