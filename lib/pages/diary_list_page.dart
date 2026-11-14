@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../data/diary_repository.dart';
 import '../models/diary_entry.dart';
+import '../services/diary_export_service.dart';
 import '../services/diary_image_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/diary_status_sheet.dart';
@@ -39,6 +41,9 @@ class _DiaryListPageState extends State<DiaryListPage> {
 
   /// 正在编辑的日记（null 表示当前是「记录」新日记）
   DiaryEntry? _editingEntry;
+
+  /// 编辑态下是否已把该条日记的图片标记删除（保存时才真正落库/删文件）
+  bool _editingImageRemoved = false;
 
   /// 输入卡片的锚点，双击某条日记后据此把输入区滚回可视范围
   final GlobalKey _composeAnchor = GlobalKey();
@@ -146,6 +151,24 @@ class _DiaryListPageState extends State<DiaryListPage> {
     return '${dt.month}月${dt.day}日 $hm';
   }
 
+  /// 顶部输入卡里展示的图片路径：编辑态取被编辑条目，记录态取今日状态
+  String? _composeImagePath(DiaryEntry? editing) {
+    if (editing != null) {
+      if (_editingImageRemoved) return null;
+      final p = editing.imagePath;
+      if (p != null && p.isNotEmpty) return p;
+      return null;
+    }
+    return _todayStatus?.imagePath;
+  }
+
+  /// 顶部输入卡里展示的位置：编辑态取被编辑条目，记录态取今日状态
+  String _composeLocation(DiaryEntry? editing) {
+    final l = editing?.location;
+    if (l != null && l.isNotEmpty) return l;
+    return _todayStatus?.location ?? '';
+  }
+
   /// 双击日记卡片：把这条内容填回输入框，按钮切成「编辑」
   void _startEdit(DiaryEntry entry) {
     if (_editingEntry?.id == entry.id) {
@@ -153,6 +176,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
       return;
     }
     setState(() => _editingEntry = entry);
+    _editingImageRemoved = false;
     _textCtrl.text = entry.content;
     _textCtrl.selection = TextSelection.collapsed(offset: entry.content.length);
     _focusNode.requestFocus();
@@ -173,6 +197,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
   /// 退出编辑，回到「记录」新日记
   void _cancelEdit() {
     setState(() => _editingEntry = null);
+    _editingImageRemoved = false;
     _textCtrl.clear();
     _focusNode.unfocus();
   }
@@ -290,23 +315,25 @@ class _DiaryListPageState extends State<DiaryListPage> {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 28,
-                height: 28,
-                child: Material(
-                  color: Colors.transparent,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: _openStatusSheet,
-                    child: const Icon(
-                      Icons.add,
-                      size: 18,
-                      color: _onSurfaceVariant,
+              // 编辑态只改正文，右上角「+」状态面板入口隐藏
+              if (editing == null)
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: Material(
+                    color: Colors.transparent,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _openStatusSheet,
+                      child: const Icon(
+                        Icons.add,
+                        size: 18,
+                        color: _onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
           // 编辑提示：正在改哪一条，随时可退出
@@ -431,14 +458,15 @@ class _DiaryListPageState extends State<DiaryListPage> {
           // 图片缩略 / 位置标签 + 记录按钮
           Row(
             children: [
-              if (_todayStatus?.imagePath != null) ...[
-                _buildThumb(_todayStatus!.imagePath!),
+              // 编辑态：展示被编辑条目的图片/位置，图片可删除；记录态：展示今日状态
+              if (_composeImagePath(editing) != null) ...[
+                editing != null
+                    ? _buildEditingThumb(_composeImagePath(editing)!)
+                    : _buildThumb(_composeImagePath(editing)!),
                 const SizedBox(width: 8),
               ],
-              if ((_todayStatus?.location ?? '').isNotEmpty)
-                Flexible(
-                  child: _buildLocationTag(_todayStatus?.location ?? ''),
-                ),
+              if (_composeLocation(editing).isNotEmpty)
+                Flexible(child: _buildLocationTag(_composeLocation(editing))),
               const Spacer(),
               GestureDetector(
                 key: const ValueKey('diary-save-btn'),
@@ -634,6 +662,58 @@ class _DiaryListPageState extends State<DiaryListPage> {
     );
   }
 
+  /// 编辑态图片缩略：带删除角标；删除只是标记，保存时才真正删文件
+  Widget _buildEditingThumb(String path) {
+    return SizedBox(
+      width: 28,
+      height: 28,
+      child: Stack(
+        key: const ValueKey('diary-edit-thumb'),
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              File(path),
+              width: 28,
+              height: 28,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => Container(
+                width: 28,
+                height: 28,
+                color: _surfaceContainer,
+                child: const Icon(
+                  Icons.broken_image_outlined,
+                  size: 14,
+                  color: _outline,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: GestureDetector(
+              onTap: () => setState(() => _editingImageRemoved = true),
+              child: Container(
+                width: 14,
+                height: 14,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF213145).withValues(alpha: 0.7),
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(8),
+                    bottomLeft: Radius.circular(8),
+                  ),
+                ),
+                child: const Icon(Icons.close, size: 10, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 位置标签
   Widget _buildLocationTag(String location) {
     return Container(
@@ -697,7 +777,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
     );
   }
 
-  /// 头部：往昔回忆 + 年份切换 + 共 X 篇 + 下载
+  /// 头部：往昔回忆 + 年份切换 + 共 X 篇（导出按钮已移到年份弹框右上角）
   Widget _buildYearHeader(int total) {
     return Row(
       children: [
@@ -766,26 +846,6 @@ class _DiaryListPageState extends State<DiaryListPage> {
             fontSize: 11,
             fontWeight: FontWeight.w600,
             color: _onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(width: 6),
-        // 下载按钮（功能暂未实现）
-        Container(
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: _surfaceContainerLow,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: _outlineVariant.withValues(alpha: 0.3),
-              width: 1,
-            ),
-          ),
-          child: const Icon(
-            Icons.file_download_outlined,
-            size: 18,
-            color: AppColors.primary,
           ),
         ),
       ],
@@ -1390,8 +1450,14 @@ class _DiaryListPageState extends State<DiaryListPage> {
       return;
     }
 
-    // 编辑态：只改这条的正文，时间 / 心情 / 天气 / 图片 / 位置原样保留
+    // 编辑态：只改这条的正文，时间 / 心情 / 天气 / 图片 / 位置原样保留；
+    // 图片若被用户点删除，这里才清引用并删掉本地文件
     if (editingTarget != null) {
+      String? imagePath = editingTarget.imagePath;
+      if (_editingImageRemoved && imagePath != null) {
+        unawaited(_deleteImageFile(imagePath));
+        imagePath = null;
+      }
       final updated = DiaryEntry(
         id: editingTarget.id,
         content: text,
@@ -1402,7 +1468,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
         weatherDesc: editingTarget.weatherDesc,
         temp: editingTarget.temp,
         location: editingTarget.location,
-        imagePath: editingTarget.imagePath,
+        imagePath: imagePath,
       );
       await widget.repo.save(updated);
       if (!mounted) return;
@@ -1410,6 +1476,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
       _focusNode.unfocus();
       setState(() {
         _editingEntry = null;
+        _editingImageRemoved = false;
         _year = updated.dateTime.year;
         _expandedKeys.add(_monthKey(updated.dateTime.month));
       });
@@ -1535,7 +1602,10 @@ class _DiaryListPageState extends State<DiaryListPage> {
     final wasEditing = _editingEntry?.id == entry.id;
     if (wasEditing) _textCtrl.clear();
     setState(() {
-      if (wasEditing) _editingEntry = null;
+      if (wasEditing) {
+        _editingEntry = null;
+        _editingImageRemoved = false;
+      }
     });
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('删除成功')));
@@ -1573,13 +1643,45 @@ class _DiaryListPageState extends State<DiaryListPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '切换年份',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: _onSurface,
-                  ),
+                // 标题 + 右上角导出（导出的是当前选中的年份，功能稍后实现）
+                Row(
+                  children: [
+                    const Text(
+                      '切换年份',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: _onSurface,
+                      ),
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      key: const ValueKey('diary-export-btn'),
+                      onTap: () {
+                        final year = selected;
+                        Navigator.of(ctx).pop();
+                        _exportYear(year);
+                      },
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _surfaceContainerLow,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: _outlineVariant.withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.file_download_outlined,
+                          size: 18,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -1671,6 +1773,31 @@ class _DiaryListPageState extends State<DiaryListPage> {
         _expandedKeys.clear();
       });
     }
+  }
+
+  /// 导出某年日记为 docx（版式对齐用户提供的 2026.docx），完成后拉起系统分享。
+  Future<void> _exportYear(int year) async {
+    final entries = widget.repo.getByYear(year);
+    if (entries.isEmpty) {
+      _showSnack('$year 年还没有日记，无法导出');
+      return;
+    }
+    _showSnack('正在导出 $year 年日记…');
+    try {
+      final path = await DiaryExportService.exportYear(year, entries);
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(path)], subject: 'LittleButler $year年日记'),
+      );
+    } catch (e) {
+      if (mounted) _showSnack('导出失败：$e');
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 双击时间轴：给这个月挑一个配色。

@@ -8,13 +8,14 @@ import 'image_compress_service.dart';
 /// 日记图片的存储与压缩。
 ///
 /// 相册原图动辄 3–10MB，直接落盘会把本地库撑大；
-/// 统一在写入数据库前压成「最长边 1280、JPEG 质量 80」的图片。
+/// 统一在写入数据库前压成「最长边 640、JPEG 质量 70」的图片，
+/// 体积通常只有几十到几百 KB，用于时间轴/编辑表单的缩略显示足够清晰。
 class DiaryImageService {
-  /// 长边上限（同时限宽高），1280 已足够覆盖整宽卡片显示。
-  static const int maxDimension = 1280;
+  /// 长边上限（同时限宽高），640 已足够覆盖卡片缩略与全屏预览。
+  static const int maxDimension = 640;
 
-  /// JPEG 质量，80 肉眼基本无损、体积约为原图 1/10。
-  static const int jpegQuality = 80;
+  /// JPEG 质量，70 在体积与清晰度之间取平衡。
+  static const int jpegQuality = 70;
 
   /// 相册选中后先落一份临时工作副本，压缩完成后删除。
   static const String pendingPrefix = 'pending_';

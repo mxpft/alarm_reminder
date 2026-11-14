@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
 void main() {
-  test('压缩：长边缩到 1280，体积显著变小，产物可解码', () async {
+  test('压缩：长边缩到 640，体积显著变小，产物可解码', () async {
     final tmp = Directory.systemTemp.createTempSync('diary_img');
     addTearDown(() => tmp.deleteSync(recursive: true));
 
@@ -41,7 +41,7 @@ void main() {
     final decoded = img.decodeImage(outBytes);
     expect(decoded, isNotNull);
     expect(decoded!.width, DiaryImageService.maxDimension);
-    // 等比缩放：2400×1600 → 1280×853
+    // 等比缩放：2400×1600 → 640×427
     expect(
       decoded.height,
       (1600 * DiaryImageService.maxDimension / 2400).round(),
