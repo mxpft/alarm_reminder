@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../services/diary_image_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/file_util.dart';
+import '../utils/snack_util.dart';
 
 /// 今日状态（心情 / 天气 / 气温 / 位置 / 图片）。
 class DiaryStatus {
@@ -125,7 +127,7 @@ class _DiaryStatusSheetState extends State<DiaryStatusSheet> {
         path.isNotEmpty &&
         path != _initialImagePath &&
         DiaryImageService.isPending(path)) {
-      _deleteFileQuietly(path);
+      unawaited(deleteFileQuietly(path));
     }
     _moodDescCtrl.dispose();
     _weatherDescCtrl.dispose();
@@ -172,26 +174,13 @@ class _DiaryStatusSheetState extends State<DiaryStatusSheet> {
       final oldPath = _imagePath;
       setState(() => _imagePath = dest.path);
       if (oldPath != null && oldPath.isNotEmpty && oldPath != dest.path) {
-        _deleteFileQuietly(oldPath);
+        unawaited(deleteFileQuietly(oldPath));
       }
     } catch (e) {
       debugPrint('日记图片保存失败: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('图片添加失败，请重试')));
+      showErrorSnack(context, '图片添加失败，请重试');
     }
-  }
-
-  /// 移除图片时同步清掉工作副本，避免留下孤儿文件
-  void _deleteFileQuietly(String path) {
-    unawaited(() async {
-      try {
-        final file = File(path);
-        if (await file.exists()) await file.delete();
-      } catch (e) {
-        debugPrint('清理待压缩图片失败: $e');
-      }
-    }());
   }
 
   /// emoji 选择面板：点一下选中并回填，再点同一个即取消（回到占位图标）
@@ -602,7 +591,7 @@ class _DiaryStatusSheetState extends State<DiaryStatusSheet> {
                 onTap: () {
                   final removed = _imagePath;
                   if (removed != null && removed.isNotEmpty) {
-                    _deleteFileQuietly(removed);
+                    unawaited(deleteFileQuietly(removed));
                   }
                   setState(() => _imagePath = null);
                 },

@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/diary_entry.dart';
+import 'image_compress_service.dart';
 
 /// 一句话日记导出服务。
 ///
@@ -158,7 +159,7 @@ class DiaryExportService {
 
   /// 尝试把日记图片编入文档，返回图片段落的 XML；图片读不到 / 解码失败则返回 null。
   ///
-  /// 导出前会把图片缩到长边 640px 并用 JPEG 重编码：既做缩略显示，也把体积压到几百 KB。
+  /// 导出前会把图片缩到长边 320px 并用 JPEG 重编码：既做缩略显示，也把体积压到几十 KB。
   static String? _tryBuildImage(String? imagePath, List<_MediaItem> media) {
     if (imagePath == null || imagePath.isEmpty) return null;
     final file = File(imagePath);
@@ -167,25 +168,11 @@ class DiaryExportService {
       var decoded = img.decodeImage(file.readAsBytesSync());
       if (decoded == null) return null;
 
-      // JPEG 不支持透明通道，先合成到白底，避免出现黑边/黑块
-      decoded = _flattenAlpha(decoded);
-      // 缩略：长边超过 640 时等比缩小
-      final longSide = decoded.width >= decoded.height
-          ? decoded.width
-          : decoded.height;
-      if (longSide > _imageMaxEdge) {
-        decoded = decoded.width >= decoded.height
-            ? img.copyResize(
-                decoded,
-                width: _imageMaxEdge,
-                interpolation: img.Interpolation.average,
-              )
-            : img.copyResize(
-                decoded,
-                height: _imageMaxEdge,
-                interpolation: img.Interpolation.average,
-              );
-      }
+      // JPEG 不支持透明通道，先合成到白底；再等比缩略到长边上限
+      decoded = ImageCompressService.resizeToMax(
+        ImageCompressService.flattenOnWhite(decoded),
+        _imageMaxEdge,
+      );
 
       final outBytes = Uint8List.fromList(
         img.encodeJpg(decoded, quality: _imageQuality),
@@ -210,15 +197,6 @@ class DiaryExportService {
     } catch (_) {
       return null;
     }
-  }
-
-  /// JPEG 不支持透明通道，先把透明像素合成到白底
-  static img.Image _flattenAlpha(img.Image image) {
-    if (image.numChannels < 4) return image;
-    final canvas = img.Image(width: image.width, height: image.height);
-    img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
-    img.compositeImage(canvas, image);
-    return canvas;
   }
 
   static String _imageParagraph(

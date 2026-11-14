@@ -14,6 +14,7 @@ import '../models/birthday_entry.dart';
 import '../models/birthday_type.dart';
 import '../services/image_compress_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/file_util.dart';
 import 'custom_date_picker.dart';
 import 'custom_time_picker.dart';
 import 'lunar_date_picker.dart';
@@ -104,7 +105,7 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
         path != null &&
         path.isNotEmpty &&
         path != _initialAvatarPath) {
-      unawaited(_deleteFileQuietly(path));
+      unawaited(deleteFileQuietly(path));
     }
     _nameCtrl.dispose();
     _remarkCtrl.dispose();
@@ -747,19 +748,9 @@ class _BirthdayEditDialogState extends State<BirthdayEditDialog> {
     // 换了头像或清掉了头像：旧文件没人引用了，后台删掉，避免越攒越多
     final oldAvatar = widget.existing?.avatarPath;
     if (oldAvatar != null && oldAvatar.isNotEmpty && oldAvatar != _avatarPath) {
-      unawaited(_deleteFileQuietly(oldAvatar));
+      unawaited(deleteFileQuietly(oldAvatar));
     }
     Navigator.of(context).pop(entry);
-  }
-
-  /// 静默删除本地文件（失败不影响保存结果）
-  Future<void> _deleteFileQuietly(String path) async {
-    try {
-      final file = File(path);
-      if (await file.exists()) await file.delete();
-    } catch (e) {
-      debugPrint('清理旧头像失败: $e');
-    }
   }
 
   BirthdayEntry _buildEntry() {

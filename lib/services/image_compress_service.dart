@@ -52,6 +52,33 @@ class ImageCompressService {
     await dest.writeAsBytes(bytes, flush: true);
     return dest.path;
   }
+
+  /// JPEG 不支持透明通道，先把半透明/透明像素合成到白底，避免出现黑边或黑块。
+  /// 导出 docx 等场景也复用这一份，避免各写一套。
+  static img.Image flattenOnWhite(img.Image image) {
+    if (image.numChannels < 4) return image;
+    final canvas = img.Image(width: image.width, height: image.height);
+    img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
+    img.compositeImage(canvas, image);
+    return canvas;
+  }
+
+  /// 长边超过 [maxDimension] 时等比缩小，否则原样返回。
+  static img.Image resizeToMax(img.Image image, int maxDimension) {
+    final longSide = image.width >= image.height ? image.width : image.height;
+    if (longSide <= maxDimension) return image;
+    return image.width >= image.height
+        ? img.copyResize(
+            image,
+            width: maxDimension,
+            interpolation: img.Interpolation.average,
+          )
+        : img.copyResize(
+            image,
+            height: maxDimension,
+            interpolation: img.Interpolation.average,
+          );
+  }
 }
 
 Uint8List _compressInIsolate(Map<String, dynamic> args) {
@@ -64,32 +91,7 @@ Uint8List _compressInIsolate(Map<String, dynamic> args) {
     return bytes;
   }
   final oriented = img.bakeOrientation(decoded);
-  final flattened = _flattenAlpha(oriented);
-  final resized = _resizeToMax(flattened, maxDimension);
+  final flattened = ImageCompressService.flattenOnWhite(oriented);
+  final resized = ImageCompressService.resizeToMax(flattened, maxDimension);
   return img.encodeJpg(resized, quality: quality);
-}
-
-/// JPEG 不支持透明通道，先把半透明/透明像素合成到白底，避免出现黑边或黑块
-img.Image _flattenAlpha(img.Image image) {
-  if (image.numChannels < 4) return image;
-  final canvas = img.Image(width: image.width, height: image.height);
-  img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
-  img.compositeImage(canvas, image);
-  return canvas;
-}
-
-img.Image _resizeToMax(img.Image image, int maxDimension) {
-  final longSide = image.width >= image.height ? image.width : image.height;
-  if (longSide <= maxDimension) return image;
-  return image.width >= image.height
-      ? img.copyResize(
-          image,
-          width: maxDimension,
-          interpolation: img.Interpolation.average,
-        )
-      : img.copyResize(
-          image,
-          height: maxDimension,
-          interpolation: img.Interpolation.average,
-        );
 }

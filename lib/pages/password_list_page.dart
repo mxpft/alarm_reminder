@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../data/password_repository.dart';
 import '../models/password_entry.dart';
 import '../theme/app_colors.dart';
+import '../utils/snack_util.dart';
 
 class PasswordListPage extends StatefulWidget {
   final PasswordRepository repo;
@@ -343,8 +344,7 @@ class _PasswordListPageState extends State<PasswordListPage> {
     if (result != null) {
       await widget.repo.save(result);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('保存成功')));
+        showSuccessSnack(context, '保存成功');
       }
     }
   }
@@ -400,8 +400,7 @@ class _PasswordListPageState extends State<PasswordListPage> {
     if (ok == true) {
       await widget.repo.delete(entry.id);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('删除成功')));
+        showSuccessSnack(context, '删除成功');
       }
     }
   }
@@ -421,8 +420,7 @@ class _PasswordCard extends StatelessWidget {
 
   void _copy(BuildContext context, String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('$label复制成功')));
+    showSuccessSnack(context, '$label复制成功');
   }
 
   @override

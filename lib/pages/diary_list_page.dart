@@ -9,6 +9,8 @@ import '../models/diary_entry.dart';
 import '../services/diary_export_service.dart';
 import '../services/diary_image_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/file_util.dart';
+import '../utils/snack_util.dart';
 import '../widgets/diary_status_sheet.dart';
 
 /// 一句话日记页面（含今日记录卡片 + 往昔回忆时间线）。
@@ -628,7 +630,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
                 if (s == null) return;
                 final droppedPath = s.imagePath;
                 if (droppedPath != null && droppedPath.isNotEmpty) {
-                  unawaited(_deleteImageFile(droppedPath));
+                  unawaited(deleteFileQuietly(droppedPath));
                 }
                 setState(() {
                   _todayStatus = DiaryStatus(
@@ -1439,12 +1441,9 @@ class _DiaryListPageState extends State<DiaryListPage> {
     final text = _textCtrl.text.trim();
     final editingTarget = _editingEntry;
     if (text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            editingTarget == null ? '请先写下一句值得记录的话吧...' : '内容不能为空，想删掉这条请长按卡片',
-          ),
-        ),
+      showErrorSnack(
+        context,
+        editingTarget == null ? '请先写下一句值得记录的话吧...' : '内容不能为空，想删掉这条请长按卡片',
       );
       _focusNode.requestFocus();
       return;
@@ -1455,7 +1454,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
     if (editingTarget != null) {
       String? imagePath = editingTarget.imagePath;
       if (_editingImageRemoved && imagePath != null) {
-        unawaited(_deleteImageFile(imagePath));
+        unawaited(deleteFileQuietly(imagePath));
         imagePath = null;
       }
       final updated = DiaryEntry(
@@ -1480,8 +1479,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
         _year = updated.dateTime.year;
         _expandedKeys.add(_monthKey(updated.dateTime.month));
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已更新')));
+      showSuccessSnack(context, '已更新');
       return;
     }
 
@@ -1496,7 +1494,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
         imagePath = await DiaryImageService.compressToDiaryDir(imagePath);
         if (originalImagePath != null && originalImagePath != imagePath) {
           // 未压缩的临时副本用完即删，避免留下同图两份
-          unawaited(_deleteImageFile(originalImagePath));
+          unawaited(deleteFileQuietly(originalImagePath));
         }
       } catch (e) {
         debugPrint('日记图片压缩失败，保留原图: $e');
@@ -1527,8 +1525,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
       _touchedKeys.remove(_monthKey(now.month));
       _expandedKeys.add(_monthKey(now.month));
     });
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('已记录')));
+    showSuccessSnack(context, '已记录');
   }
 
   String? _nullIfEmpty(String? v) {
@@ -1594,7 +1591,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
     // 图片清理放后台执行，避免界面刷新被文件 I/O 阻塞
     final imagePath = entry.imagePath;
     if (imagePath != null && imagePath.isNotEmpty) {
-      unawaited(_deleteImageFile(imagePath));
+      unawaited(deleteFileQuietly(imagePath));
     }
 
     if (!mounted) return;
@@ -1607,18 +1604,7 @@ class _DiaryListPageState extends State<DiaryListPage> {
         _editingImageRemoved = false;
       }
     });
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('删除成功')));
-  }
-
-  /// 静默删除本地图片文件（失败不影响删除结果）
-  Future<void> _deleteImageFile(String path) async {
-    try {
-      final file = File(path);
-      if (await file.exists()) await file.delete();
-    } catch (e) {
-      debugPrint('删除日记图片失败: $e');
-    }
+    showSuccessSnack(context, '删除成功');
   }
 
   /// 年份切换
@@ -1779,10 +1765,10 @@ class _DiaryListPageState extends State<DiaryListPage> {
   Future<void> _exportYear(int year) async {
     final entries = widget.repo.getByYear(year);
     if (entries.isEmpty) {
-      _showSnack('$year 年还没有日记，无法导出');
+      showSnack(context, '$year 年还没有日记，无法导出', kind: SnackKind.error);
       return;
     }
-    _showSnack('正在导出 $year 年日记…');
+    showSnack(context, '正在导出 $year 年日记…');
     try {
       final path = await DiaryExportService.exportYear(year, entries);
       if (!mounted) return;
@@ -1790,14 +1776,10 @@ class _DiaryListPageState extends State<DiaryListPage> {
         ShareParams(files: [XFile(path)], subject: 'LittleButler $year年日记'),
       );
     } catch (e) {
-      if (mounted) _showSnack('导出失败：$e');
+      if (mounted) {
+        showSnack(context, '导出失败：$e', kind: SnackKind.error);
+      }
     }
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// 双击时间轴：给这个月挑一个配色。
@@ -1828,10 +1810,10 @@ class _DiaryListPageState extends State<DiaryListPage> {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                '选一个颜色，这个月的圆点与日期一起换色',
-                style: TextStyle(fontSize: 11, color: _outline),
-              ),
+              // const Text(
+              //   '选一个颜色，这个月的圆点与日期一起换色',
+              //   style: TextStyle(fontSize: 11, color: _outline),
+              // ),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 12,

@@ -10,6 +10,7 @@ import '../models/birthday_type.dart';
 import '../services/birthday_calculator.dart';
 import '../services/notification_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/snack_util.dart';
 import '../widgets/birthday_edit_dialog.dart';
 
 /// 生日列表页。
@@ -86,13 +87,15 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
       await widget.notification.requestPermissions();
       await widget.notification.testShowNow();
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已发送测试通知，下拉通知栏查看')));
+        showSuccessSnack(
+          context,
+          '已发送测试通知，下拉通知栏查看',
+          palette: SnackPalette.birthday,
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('测试通知失败：$e')));
+        showErrorSnack(context, '测试通知失败：$e', palette: SnackPalette.birthday);
       }
     }
   }
@@ -101,17 +104,16 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
     try {
       await widget.notification.testScheduleLater();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 11),
-            content: _CountdownTimer(),
-          ),
+        showChildSnack(
+          context,
+          _CountdownTimer(),
+          palette: SnackPalette.birthday,
+          duration: const Duration(seconds: 11),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('定时通知失败：$e')));
+        showErrorSnack(context, '定时通知失败：$e', palette: SnackPalette.birthday);
       }
     }
   }
@@ -142,8 +144,11 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
       } else {
         fullText = '$baseText（本地提醒已设置）';
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(fullText), duration: const Duration(seconds: 3)),
+      showSuccessSnack(
+        context,
+        fullText,
+        palette: SnackPalette.birthday,
+        duration: const Duration(seconds: 3),
       );
     }
   }
@@ -203,8 +208,7 @@ class _BirthdayListPageState extends State<BirthdayListPage> {
     await widget.notification.rescheduleAll(widget.repo, DateTime.now());
 
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('删除成功')));
+      showSuccessSnack(context, '删除成功', palette: SnackPalette.birthday);
     }
   }
 
@@ -737,7 +741,15 @@ class _CountdownTimerState extends State<_CountdownTimer> {
       stream: _stream,
       builder: (context, snapshot) {
         final sec = snapshot.data ?? _seconds;
-        return Text('已排定，$sec秒后提醒...');
+        return Text(
+          '已排定，$sec秒后提醒...',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            height: 1.4,
+            fontWeight: FontWeight.w500,
+          ),
+        );
       },
     );
   }
